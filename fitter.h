@@ -65,6 +65,10 @@ decayRates* decRefDsS;
 
 pdfComp fitComp[4];
 
+
+std::vector<TString> theoryInputs;
+
+
 double _Bmass, _Dsmass, _DsSmass;
 double _chi2, _ndf;
 TH1D * hData;

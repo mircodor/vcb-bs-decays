@@ -43,6 +43,7 @@ void decayRates::FFfunctionsCLN(double w, vector<parameter> FFpar, double& Gw){
 }
 
 //______________________________________________________________________________
+
 void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& Gw){
     
     //da ricontrollare!!!

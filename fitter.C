@@ -3,9 +3,11 @@
 #include <TFitter.h>  
 #include <TMinuit.h>
 #include <TRandom3.h>
+#include <TGraphErrors.h>
 #include <TF2.h>
 #include <TF3.h>
 #include <map>
+#include "TheoryInputs.h"
 
 using namespace std;
 
@@ -15,6 +17,7 @@ bool fitter::RunFitter(TString filename)  {
     if (!DoFit(1)) return false;
     
     TCanvas* c1 = new TCanvas("c1","c1",800,1200);
+    c1->Divide(theoryInputs.size()+1,1);
     Plot(c1);
      
     return true;
@@ -67,7 +70,6 @@ bool fitter::ReadConfigFile(TString filename){
   string line;
   unsigned int np=1;
   map< pair<TString,TString>, double > parCorr;
-    
   ifstream fin(filename);
   while(fin>>line) {
     if(line=="FF-Model-Ref-P")  {
@@ -131,6 +133,14 @@ bool fitter::ReadConfigFile(TString filename){
           parCorr[make_pair(par2, par1)] = value;
       }
     }
+    else if(line=="Theory-Inputs") {
+      fin >> np;
+      for (unsigned int i=0; i<np; ++i) {
+	TString model;
+	fin >> model;
+	theoryInputs.push_back(model);
+      }
+    }
     else continue;
   }
   fin.close();
@@ -183,6 +193,7 @@ bool fitter::ReadConfigFile(TString filename){
           }
      }
     
+
      return true;
     
 }
@@ -212,7 +223,10 @@ void fitter::PrintConfigInfo(){
     cout << parConst.size() << endl;
     if(parConst.size() == 0) return;
     for(auto p : parConst) p.print();
-    
+    cout << "--------------------------------------------\n";
+    cout << " Theory inputs: ";
+    for(long unsigned int i = 0; i < theoryInputs.size(); i++) cout << theoryInputs[i] << " ";
+    cout << endl;
     return;
 }
 
@@ -372,6 +386,8 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
 
 void fcn_tot(int &, double *, double &f, double *p, int ) {
 
+
+
   SetAllPars(p);
     
   FillHistogram();            
@@ -415,6 +431,14 @@ void fcn_tot(int &, double *, double &f, double *p, int ) {
       }
      _ndf+=parConst.size();
    }
+
+
+
+   //add theory inputs to chi2
+   for(unsigned int i = 0; i < theoryInputs.size(); i++) 
+     addTheoryInputDs(theoryInputs[i],decFitDs->GetFFModel().FFpars,_chi2,_ndf);
+
+
 
  
   f = _chi2;
@@ -549,7 +573,7 @@ void calculateYields() {
 
   bool fitter::Plot(TCanvas *c) {
 	
-	c->cd();
+	c->cd(1);
 	TPad*    upperPad = new TPad("upperPad", "upperPad",   .005, .2525, .995, .995);
 	TPad*    lowerPad = new TPad("lowerPad", "lowerPad",   .005, .005,  .995, .2475);
 	upperPad->SetBottomMargin(0.18);
@@ -588,7 +612,7 @@ void calculateYields() {
 	
 	for(int i = 1; i <= hData->GetNbinsX() ; i++) {
 	  double pull = (hData->GetBinContent(i)-hFit->GetBinContent(i))/sqrt(hData->GetBinError(i)*hData->GetBinError(i) +
-																		  hFit->GetBinError(i)*hFit->GetBinError(i));
+									      hFit->GetBinError(i)*hFit->GetBinError(i));
 	  cout << i << " " << pull << endl;
 	  hpull->SetBinContent(i,pull);
 	}
@@ -633,10 +657,56 @@ void calculateYields() {
 	
 	leg->Draw("SAME");
 	
+
+	//////////
+	std::vector<TGraphErrors*> gr;
+	for(long unsigned int k = 0; k < theoryInputs.size(); k++) {
+	  std::vector<double> wtmp;
+	  std::vector<double> ftmp;
+	  std::vector<double> ftmperr;
+	  if(theoryInputs[k] == "MILC") {
+	    wtmp = wMILC;
+	    ftmp = fMILC;
+	    ftmperr = fMILCerr;
+	  }
+	  if(theoryInputs[k] == "HPQCD") {
+	    wtmp = wHPQCD;
+	    ftmp = fHPQCD;
+	    ftmperr = fHPQCDerr;
+	  }
+	  
+	  TGraphErrors * gr1 = new TGraphErrors(wtmp.size());
+	  for(long unsigned int i = 0; i < wtmp.size(); i++) {
+	    gr1->SetPoint(i,wtmp[i],ftmp[i]);
+	    gr1->SetPointError(i,0,ftmperr[i]);
+	  }
+	  gr.push_back(gr1);
+	}
+	
+	TGraphErrors * gr2 = new TGraphErrors(100);
+	for(long unsigned int i = 0; i < 100; i++) {
+	  double step = (1.2 - 1)/100;
+	  //decFitDs->GetFFModel().FFpars
+	  gr2->SetPoint(i,1+i*step,FFfunctionsCLN(1+i*step,decFitDs->GetFFModel().FFpars));
+	  gr2->SetPointError(i,0,0);
+	}
+	
+
+	gr2->SetMarkerStyle(20);
+	gr2->SetMarkerSize(0.5);
+	gr2->GetYaxis()->SetRangeUser(0.8,1.4);
+
+	for(long unsigned int i = 0; i < gr.size(); i++) {
+	  c->cd(2+i);
+	  gr2->Draw("APE");
+	  gr[i]->SetMarkerStyle(21+i);
+	  gr[i]->SetMarkerColor(2+i);
+	  gr[i]->Draw("PESAME");
+	}
+  
 	c->SaveAs("figs/projection_fit_simul_4D.pdf");
 	
 	return true;
 	
   }
-
 
