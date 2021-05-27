@@ -17,7 +17,7 @@ bool fitter::RunFitter(TString filename)  {
     if (!DoFit(1)) return false;
     
     TCanvas* c1 = new TCanvas("c1","c1",800,1200);
-    c1->Divide(theoryInputs.size()+1,1);
+    c1->Divide(theoryInputsDsS.size()*3+theoryInputsDs.size()+1,1);
     Plot(c1);
      
     return true;
@@ -133,12 +133,22 @@ bool fitter::ReadConfigFile(TString filename){
           parCorr[make_pair(par2, par1)] = value;
       }
     }
-    else if(line=="Theory-Inputs") {
+    else if(line=="Theory-Inputs-Ds") {
       fin >> np;
       for (unsigned int i=0; i<np; ++i) {
 	TString model;
 	fin >> model;
-	theoryInputs.push_back(model);
+	cout << model << endl;
+	  
+	theoryInputsDs.push_back(model);
+      }
+    }
+    else if(line=="Theory-Inputs-DsS") {
+      fin >> np;
+      for (unsigned int i=0; i<np; ++i) {
+	TString model;
+	fin >> model;
+	theoryInputsDsS.push_back(model);
       }
     }
     else continue;
@@ -224,8 +234,11 @@ void fitter::PrintConfigInfo(){
     if(parConst.size() == 0) return;
     for(auto p : parConst) p.print();
     cout << "--------------------------------------------\n";
-    cout << " Theory inputs: ";
-    for(long unsigned int i = 0; i < theoryInputs.size(); i++) cout << theoryInputs[i] << " ";
+    cout << " Theory inputs Ds: ";
+    for(long unsigned int i = 0; i < theoryInputsDs.size(); i++) cout << theoryInputsDs[i] << " ";
+    cout << endl;
+    cout << " Theory inputs DsS: ";
+    for(long unsigned int i = 0; i < theoryInputsDsS.size(); i++) cout << theoryInputsDsS[i] << " ";
     cout << endl;
     return;
 }
@@ -435,10 +448,12 @@ void fcn_tot(int &, double *, double &f, double *p, int ) {
 
 
    //add theory inputs to chi2
-   for(unsigned int i = 0; i < theoryInputs.size(); i++) 
-     addTheoryInputDs(theoryInputs[i],decFitDs->GetFFModel().FFpars,_chi2,_ndf);
+   for(unsigned int i = 0; i < theoryInputsDs.size(); i++) 
+     addTheoryInputDs(theoryInputsDs[i],decFitDs->GetFFModel().FFpars,_chi2,_ndf);
+   for(unsigned int i = 0; i < theoryInputsDsS.size(); i++) 
+     addTheoryInputDsS(theoryInputsDsS[i],decFitDsS->GetFFModel().FFpars,_chi2,_ndf);
 
-
+   addLHCbInputDsS("LHCb",decFitDsS->GetFFModel().FFpars,_chi2,_ndf);
 
  
   f = _chi2;
@@ -660,20 +675,22 @@ void calculateYields() {
 
 	//////////
 	std::vector<TGraphErrors*> gr;
-	for(long unsigned int k = 0; k < theoryInputs.size(); k++) {
+	std::vector<TGraphErrors*> grr;
+	for(long unsigned int k = 0; k < theoryInputsDs.size(); k++) {
 	  std::vector<double> wtmp;
 	  std::vector<double> ftmp;
 	  std::vector<double> ftmperr;
-	  if(theoryInputs[k] == "MILC") {
+	  if(theoryInputsDs[k] == "MILC") {
 	    wtmp = wMILC;
 	    ftmp = fMILC;
 	    ftmperr = fMILCerr;
 	  }
-	  if(theoryInputs[k] == "HPQCD") {
+	  else if(theoryInputsDs[k] == "HPQCD") {
 	    wtmp = wHPQCD;
 	    ftmp = fHPQCD;
 	    ftmperr = fHPQCDerr;
 	  }
+
 	  
 	  TGraphErrors * gr1 = new TGraphErrors(wtmp.size());
 	  for(long unsigned int i = 0; i < wtmp.size(); i++) {
@@ -686,7 +703,7 @@ void calculateYields() {
 	TGraphErrors * gr2 = new TGraphErrors(100);
 	for(long unsigned int i = 0; i < 100; i++) {
 	  double step = (1.2 - 1)/100;
-	  //decFitDs->GetFFModel().FFpars
+	
 	  gr2->SetPoint(i,1+i*step,FFfunctionsCLN(1+i*step,decFitDs->GetFFModel().FFpars));
 	  gr2->SetPointError(i,0,0);
 	}
@@ -703,7 +720,84 @@ void calculateYields() {
 	  gr[i]->SetMarkerColor(2+i);
 	  gr[i]->Draw("PESAME");
 	}
-  
+
+	///___________________________________________________________________________________
+	gr.clear();
+	grr.clear();
+	cout << "HERE!!" << endl;
+	for(long unsigned int k = 0; k < theoryInputsDsS.size(); k++) {
+	  std::vector<double> wtmp;
+	  std::vector<double> ftmp;
+	  std::vector<double> ftmperr;
+	  if(theoryInputsDsS[k] == "LCSRDsS") {
+	    wtmp = wLCSRDsS;
+	    ftmp = fLCSRDsS;
+	    ftmperr = fLCSRDsSerr;
+	  }
+	  
+	  cout << "W SIZE "  <<  w.size() <<  " WTMP " << wtmp.size() << endl;
+	  TGraphErrors * gr1a = new TGraphErrors(4);
+	  TGraphErrors * gr1b = new TGraphErrors(4);
+	  TGraphErrors * gr1c = new TGraphErrors(4);
+	  for(long unsigned int i = 0; i < 4; i++) {
+	    gr1a->SetPoint(i,wtmp[i],ftmp[i]);
+	    gr1a->SetPointError(i,0,ftmperr[i]);
+	  }
+	  gr.push_back(gr1a);
+	  for(long unsigned int i = 4; i < 8; i++) {
+	    gr1b->SetPoint(i,wtmp[i],ftmp[i]);
+	    gr1b->SetPointError(i,0,ftmperr[i]);
+	  }
+	  gr.push_back(gr1b);
+	  for(long unsigned int i = 8; i < 12; i++) {
+	    gr1c->SetPoint(i,wtmp[i],ftmp[i]);
+	    gr1c->SetPointError(i,0,ftmperr[i]);
+	  }
+	  gr.push_back(gr1c);
+	}
+	cout << "FILLED THE FF LCSR DATA " << gr.size() << endl;
+	
+	TGraphErrors * gr2a = new TGraphErrors(100);
+	TGraphErrors * gr2b = new TGraphErrors(100);
+	TGraphErrors * gr2c = new TGraphErrors(100);
+	double V, A1, A2;
+	for(long unsigned int i = 0; i < 100; i++) {
+	  double step = (2.2 - 1.46)/100;
+	  FFfunctionsCLN_DsS(1.46+i*step, decFitDsS->GetFFModel().FFpars, V, A1, A2);
+	  gr2a->SetPoint(i,1.46+i*step, V);
+	  gr2a->SetPointError(i,0,0);
+	}
+
+	for(long unsigned int i = 0; i < 100; i++) {
+	  double step = (2.2 - 1.46)/100;
+	  FFfunctionsCLN_DsS(1.46+i*step, decFitDsS->GetFFModel().FFpars, V, A1, A2);
+	  gr2b->SetPoint(i,1.46+i*step, A1);
+	  gr2b->SetPointError(i,0,0);
+	}
+	for(long unsigned int i = 0; i < 100; i++) {
+	  double step = (2.2 - 1.46)/100;
+	  FFfunctionsCLN_DsS(1.46+i*step, decFitDsS->GetFFModel().FFpars, V, A1, A2);
+	  gr2c->SetPoint(i,1.46+i*step, A2);
+	  gr2c->SetPointError(i,0,0);
+	}
+	grr.push_back(gr2a);
+	grr.push_back(gr2b);
+	grr.push_back(gr2c);
+	cout << "FILLED THE FIT RESULTS " << grr.size() << endl;;
+
+	for(long unsigned int i = 0; i < gr.size(); i++) {
+	  c->cd(2+i+theoryInputsDs.size());
+	  cout << "CD: " << 2+i+theoryInputsDs.size() << endl;
+	  grr[i]->SetMarkerStyle(20);
+	  grr[i]->SetMarkerSize(0.5);
+	  grr[i]->GetYaxis()->SetRangeUser(0.,1.4);
+	  grr[i]->Draw("APE");
+	  gr[i]->SetMarkerStyle(21+i+theoryInputsDs.size());
+	  gr[i]->SetMarkerColor(2+i+theoryInputsDs.size());
+	  gr[i]->Draw("PESAME");
+	}
+
+
 	c->SaveAs("figs/projection_fit_simul_4D.pdf");
 	
 	return true;
