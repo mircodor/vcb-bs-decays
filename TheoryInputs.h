@@ -32,6 +32,14 @@ std::vector<double> A1err;
 std::vector<double> A2err;
 double covParDsS[30][30];
 
+
+std::vector<double> wLHCb;
+std::vector<double> wLHCblow;
+std::vector<double> wLHCberr;
+std::vector<double> fLHCb;
+std::vector<double> fLHCberr;
+double covParLHCb[30][30];
+
 void readLHCbData(TString whichData = "LHCb") {
 
   w.clear(); wlow.clear(); werr.clear();
@@ -46,7 +54,25 @@ void readLHCbData(TString whichData = "LHCb") {
     f.push_back(h->GetBinContent(i));
     ferr.push_back(h->GetBinError(i));
   }
+  //fin->Close();
+  TFile * finCov = TFile::Open("inputs/"+whichData+"_CovInv.root");
+  TH2D * hCovInv = (TH2D*)finCov->Get("hLHCbCovInv");
+  //finCov->Close();
   
+  for(int i = 1; i <= hCovInv->GetNbinsX(); i++)
+    for(int j = 1; j <= hCovInv->GetNbinsY(); j++) {
+      covParLHCb[i-1][j-1] = hCovInv->GetBinContent(i,j);
+      //cout << i-1 << " " << j-1 << " "<< covParLHCb[i-1][j-1] << endl; 
+    }
+
+  if(whichData == "LHCb") {
+    wLHCb = w;
+    wLHCblow = wlow;
+    wLHCberr = werr;
+    fLHCb = f;
+    fLHCberr = ferr;
+  }
+    
   
 }
 
@@ -64,6 +90,7 @@ void readTheoryDataDsS(TString whichData = "LCSRDsS") {
 
   w.clear(); f.clear(); ferr.clear();
   V.clear(); A1.clear(); A2.clear();
+
   TString name;
   double corr, wi, fi, ferri;
   std::map<TString, double> corrs;
@@ -164,6 +191,7 @@ void readTheoryDataDs(TString whichData= "HPQCD") {
 
 
   w.clear(); f.clear(); ferr.clear();
+
   TString name;
   double corr, wi, fi, ferri;
   std::map<TString,double> corrs;
@@ -301,23 +329,22 @@ void FFfunctionsCLN_DsS(double w, vector<parameter> FFpar, double& V, double& A1
 
 double dGdwDst(double * x, double * par) {
   double w    = x[0];              
-  double F1   = par[0];                                                                     
-  double rho2 = par[1];                                                                   
-  double R1   = par[2];                                                                     
-  double R2   = par[3];                                                                     
-
+  double F1   = par[0];                
+  double rho2 = par[1];                
+  double R1   = par[2];             
+  double R2   = par[3];               
+  double normLHCb = par[4];
   double mB = Mass::Bs/1000;
   double mDsS = Mass::DsS/1000;
   double r = mDsS/mB;
 
-  double z = (sqrt(w+1)-sqrt(2))/(sqrt(w+1)+sqrt(2));   
-  
-  double hw  = F1*(1. - 8.*rho2*z + (53.*rho2 - 15.)*z*z - (231.*rho2 - 91.)*z*z*z) ;     
-  double R1w = R1 - 0.12*(w-1.) + 0.05*(w-1.)*(w-1.);                                     
-  double R2w = R2 + 0.11*(w-1.) - 0.06*(w-1.)*(w-1.);                                     
+  double z = (sqrt(w+1)-sqrt(2))/(sqrt(w+1)+sqrt(2));
+  double hw  = F1*(1. - 8.*rho2*z + (53.*rho2 - 15.)*z*z - (231.*rho2 - 91.)*z*z*z) ;
+  double R1w = R1 - 0.12*(w-1.) + 0.05*(w-1.)*(w-1.);       
+  double R2w = R2 + 0.11*(w-1.) - 0.06*(w-1.)*(w-1.);           
   double XiFw2 =  hw*hw * sqrt(w*w-1.) *(w+1.)*(w+1.) * ( 2. * (1. - 2.*w*r + r*r)/(1.-r)/(1.-r) * (1. + R1w*R1w *(w -1.)/(w+1.) )  +  ( 1. + (1. - R2w)*(w-1.)/(1.-r)) * ( 1. + (1. - R2w)*(w-1.)/(1.-r)) );      
   
-  return XiFw2*0.65;
+  return XiFw2*normLHCb;
 
 }
 
@@ -387,31 +414,39 @@ void addTheoryInputDsS(TString whichData, vector<parameter> FFpar, double& _chi2
 //____________________________________________________________
 //Aggiungere altro vector di paramtri come argomenti (quelli Other) e aggiungere un parametro di norm nel config
 //poi passare questo parametro alla funzione come fattore di normalizzazione al posto di 0.65
-void addLHCbInputDsS(TString whichData, vector<parameter> FFpar, double& _chi2, double& _ndf){ 
+void addLHCbInputDsS(TString whichData, vector<parameter> FFpar, vector<parameter> otherPars, double& _chi2, double& _ndf){ 
 
   readLHCbData();
 
-  TF1 * fff = new TF1("fff", dGdwDst, 1, 1.4667, 4);
-  double rho2(0), R1(0), R2(0), F1(0);
-  for(auto p : FFpar){               
+  TF1 * fff = new TF1("fff", dGdwDst, 1, 1.4667, 5);
+  double rho2(0), R1(0), R2(0), F1(0), normLHCb(0);
+  for(auto p : FFpar) {               
     if     (p.name.Contains("F1"))    F1   = p.value;          
     if     (p.name.Contains("rho2V")) rho2 = p.value;          
     if     (p.name.Contains("R1"))    R1   = p.value;          
     if     (p.name.Contains("R2"))    R2   = p.value;          
   }
+  for(auto p : otherPars) {
+    if     (p.name.Contains("normLHCb"))  normLHCb   = p.value;          
+  }
+
   fff->SetParameter(0,F1);
   fff->SetParameter(1,rho2);
   fff->SetParameter(2,R1);
   fff->SetParameter(3,R2);
-  cout << F1 << " " << rho2 << " " << R1 << " " << R2 << endl;
+  fff->SetParameter(4,normLHCb);
+  //cout << F1 << " " << rho2 << " " << R1 << " " << R2 << " " << normLHCb << endl;
   
   for(long unsigned int i = 0; i < w.size(); i++) {           
     for(long unsigned int j = 0; j < w.size(); j++) {
-      if(i!=j) continue;
+
       double ffi = fff->Integral(wlow[i],wlow[i]+werr[i])/werr[i];
       double ffj = fff->Integral(wlow[j],wlow[j]+werr[j])/werr[j];
-      _chi2 += (ffi-f[i])*(ffj-f[j])/ferr[i]/ferr[j];
-      cout << i << " " << j << " " << ffi << " " << f[i] << " " << ffj << " " << f[j] << " " << ferr[i] << " " << ferr[j] << " " << _chi2 << endl;
+      //if(i != j)continue;
+      //_chi2 += (ffi-f[i])*(ffj-f[j])/ferr[i]/ferr[j];
+
+      _chi2 += (ffi-f[i])*(ffj-f[j])/covParLHCb[i][j];
+      //cout << i << " " << j << " " << ffi << " " << f[i] << " " << ffj << " " << f[j] << " " << ferr[i] << " " << ferr[j] << " " << 1./(ferr[i]*ferr[j]) << " " << covParLHCb[i][j] << " " << _chi2 << endl;
     }
   }
   
