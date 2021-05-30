@@ -16,8 +16,15 @@ bool fitter::RunFitter(TString filename)  {
     if (!Configure(filename)) return false;
     if (!DoFit(1)) return false;
     
-    TCanvas* c1 = new TCanvas("c1","c1",600,1800);
-    c1->Divide(theoryInputs.size()+1,1);
+    TCanvas* c1 = new TCanvas("c1","c1",800,1200);
+    int n = LHCbInputsDsS.size()+theoryInputsDsS.size()*3+theoryInputsDs.size()+1;
+    //int n = LHCbInputsDsS.size()+theoryInputsDsS.size()*3+1+1;
+    if(n%2==0)
+      c1->Divide(n/2,2);
+    else
+      c1->Divide(n/2+1,2);
+    //c1->Divide(LHCbInputsDsS.size()+theoryInputsDsS.size()*3+theoryInputsDs.size()+1,1);
+  
     Plot(c1);
      
     return true;
@@ -133,12 +140,30 @@ bool fitter::ReadConfigFile(TString filename){
           parCorr[make_pair(par2, par1)] = value;
       }
     }
-    else if(line=="Theory-Inputs") {
+    else if(line=="Theory-Inputs-Ds") {
       fin >> np;
       for (unsigned int i=0; i<np; ++i) {
 	TString model;
 	fin >> model;
-	theoryInputs.push_back(model);
+	cout << model << endl;
+	  
+	theoryInputsDs.push_back(model);
+      }
+    }
+    else if(line=="Theory-Inputs-DsS") {
+      fin >> np;
+      for (unsigned int i=0; i<np; ++i) {
+	TString model;
+	fin >> model;
+	theoryInputsDsS.push_back(model);
+      }
+    }
+    else if(line=="LHCb-Inputs-DsS") {
+      fin >> np;
+      for (unsigned int i=0; i<np; ++i) {
+	TString model;
+	fin >> model;
+	LHCbInputsDsS.push_back(model);
       }
     }
     else continue;
@@ -226,8 +251,14 @@ void fitter::PrintConfigInfo(){
     if(parConst.size() == 0) return;
     for(auto p : parConst) p.print();
     cout << "--------------------------------------------\n";
-    cout << " Theory inputs: ";
-    for(long unsigned int i = 0; i < theoryInputs.size(); i++) cout << theoryInputs[i] << " ";
+    cout << " Theory inputs Ds: ";
+    for(long unsigned int i = 0; i < theoryInputsDs.size(); i++) cout << theoryInputsDs[i] << " ";
+    cout << endl;
+    cout << " Theory inputs DsS: ";
+    for(long unsigned int i = 0; i < theoryInputsDsS.size(); i++) cout << theoryInputsDsS[i] << " ";
+    cout << endl;
+    cout << " LHCb inputs DsS: ";
+    for(long unsigned int i = 0; i < LHCbInputsDsS.size(); i++) cout << LHCbInputsDsS[i] << " ";
     cout << endl;
     return;
 }
@@ -446,9 +477,14 @@ SetAllPars(p);
 
 
    //add theory inputs to chi2
-   for(unsigned int i = 0; i < theoryInputs.size(); i++) 
-     addTheoryInputDs(theoryInputs[i],decFitDs->GetFFModel().FFpars,_chi2,_ndf);
+   for(unsigned int i = 0; i < theoryInputsDs.size(); i++) 
+     addTheoryInputDs(theoryInputsDs[i],decFitDs->GetFFModel().FFpars,_chi2,_ndf);
+   for(unsigned int i = 0; i < theoryInputsDsS.size(); i++) 
+     addTheoryInputDsS(theoryInputsDsS[i],decFitDsS->GetFFModel().FFpars,_chi2,_ndf);
 
+   //add LHCb inputs to chi2
+   for(unsigned int i = 0; i < LHCbInputsDsS.size(); i++) 
+     addLHCbInputDsS(LHCbInputsDsS[i],decFitDsS->GetFFModel().FFpars,otherPars,_chi2,_ndf);
  
   f = _chi2;
   
@@ -538,7 +574,7 @@ void calculateYields() {
 
     double Vcb{0}, etaEW{0}, tauBs{0}, fsfdBrDs{0}, BrD{0}, BrDst{0},
         BrBdD{0}, BrBdDst{0}, NrefD{0}, NrefDst{0}, effRD{0}, effRDst{0},
-        physBkg{0}, combBkg{0};
+        physBkg{0}, combBkg{0}, normLHCb{0};
     
     for(auto p : otherPars){
         if      (p.name == "Vcb")     Vcb = p.value;
@@ -555,6 +591,7 @@ void calculateYields() {
         else if (p.name == "effRDst") effRDst = p.value;
         else if (p.name == "physBkg") physBkg = p.value;
         else if (p.name == "combBkg") combBkg = p.value;
+        else if (p.name == "normLHCb")normLHCb = p.value;
         else { cout << "ERROR: calculateYields: unkown parameter name!!! " << endl; return; }
     }
     
@@ -667,50 +704,239 @@ void calculateYields() {
 	leg->Draw("SAME");
 	
 
-	//////////
-	std::vector<TGraphErrors*> gr;
-	for(long unsigned int k = 0; k < theoryInputs.size(); k++) {
-	  std::vector<double> wtmp;
-	  std::vector<double> ftmp;
-	  std::vector<double> ftmperr;
-	  if(theoryInputs[k] == "MILC") {
+	///_________________________________
+	std::vector<double> wtmp;
+	std::vector<double> wtmplow;
+	std::vector<double> wtmperr;
+	std::vector<double> ftmp;
+	std::vector<double> ftmperr;
+	std::vector<TGraphErrors*> grInputs;
+	std::vector<TGraphErrors*> grFit;
+	for(long unsigned int k = 0; k < theoryInputsDs.size(); k++) {
+	  wtmp.clear();
+	  ftmp.clear();
+	  ftmperr.clear();
+	  if(theoryInputsDs[k] == "MILC") {
 	    wtmp = wMILC;
 	    ftmp = fMILC;
 	    ftmperr = fMILCerr;
 	  }
-	  if(theoryInputs[k] == "HPQCD") {
+	  else if(theoryInputsDs[k] == "HPQCD") {
 	    wtmp = wHPQCD;
 	    ftmp = fHPQCD;
 	    ftmperr = fHPQCDerr;
 	  }
+	  else if(theoryInputsDs[k] == "LCSRDs") {
+	    wtmp = wLCSRDs;
+	    ftmp = fLCSRDs;
+	    ftmperr = fLCSRDserr;
+	  }
+
 	  
 	  TGraphErrors * gr1 = new TGraphErrors(wtmp.size());
 	  for(long unsigned int i = 0; i < wtmp.size(); i++) {
 	    gr1->SetPoint(i,wtmp[i],ftmp[i]);
 	    gr1->SetPointError(i,0,ftmperr[i]);
 	  }
-	  gr.push_back(gr1);
+	  grInputs.push_back(gr1);
+	  
+	  
+	  TGraphErrors * gr2 = new TGraphErrors(400);
+	  for(long unsigned int i = 0; i < 400; i++) {
+	    double step = (2.3 - 1)/400;
+	    
+	    gr2->SetPoint(i,1+i*step,FFfunctionsCLN(1+i*step,decFitDs->GetFFModel().FFpars));
+	    gr2->SetPointError(i,0,0);
+	  }
+	  grFit.push_back(gr2);
+	}
+
+	c->cd(2);
+	for(long unsigned int i = 0; i < grInputs.size(); i++) {
+	  //c->cd(2+i);
+
+	  /*
+	  if(theoryInputsDs[i] == "LCSRDs") {
+	    grFit[i]->GetYaxis()->SetRangeUser(0.1,1.0);
+	    grFit[i]->GetXaxis()->SetRangeUser(1.4,2.4);
+	  }
+	  else {
+	    grFit[i]->GetYaxis()->SetRangeUser(0.8,1.3);
+	    grFit[i]->GetXaxis()->SetRangeUser(0.9,1.18);
+	  }
+	  */
+	  if(i==0) {
+	    grFit[i]->GetYaxis()->SetRangeUser(0.1,1.3);
+	    grFit[i]->GetXaxis()->SetRangeUser(0.9,2.5);
+	    grFit[i]->SetMarkerStyle(20);
+	    grFit[i]->SetMarkerSize(0.5);
+	    grFit[i]->GetYaxis()->SetTitle("f_{+}(#it{w})");
+	    grFit[i]->GetXaxis()->SetTitle("#it{w}");
+	    grFit[i]->Draw("APE");
+
+	  }
+	  grInputs[i]->SetMarkerStyle(21+i);
+	  grInputs[i]->SetMarkerColor(2+i);
+	  grInputs[i]->Draw("PESAME");
+	}
+
+	///_________________________________
+	grInputs.clear();
+	grFit.clear();
+	for(long unsigned int k = 0; k < theoryInputsDsS.size(); k++) {
+	  wtmp.clear();
+	  ftmp.clear();
+	  ftmperr.clear();
+	  if(theoryInputsDsS[k] == "LCSRDsS") {
+	    wtmp = wLCSRDsS;
+	    ftmp = fLCSRDsS;
+	    ftmperr = fLCSRDsSerr;
+	  }
+	  
+	  TGraphErrors * gr1a = new TGraphErrors(4);
+	  TGraphErrors * gr1b = new TGraphErrors(4);
+	  TGraphErrors * gr1c = new TGraphErrors(4);
+	  for(long unsigned int i = 0; i < 4; i++) {
+	    gr1a->SetPoint(i,wtmp[i],ftmp[i]);
+	    gr1a->SetPointError(i,0,ftmperr[i]);
+	  }
+	  grInputs.push_back(gr1a);
+	  for(long unsigned int i = 4; i < 8; i++) {
+	    gr1b->SetPoint(i,wtmp[i],ftmp[i]);
+	    gr1b->SetPointError(i,0,ftmperr[i]);
+	  }
+	  grInputs.push_back(gr1b);
+	  for(long unsigned int i = 8; i < 12; i++) {
+	    gr1c->SetPoint(i,wtmp[i],ftmp[i]);
+	    gr1c->SetPointError(i,0,ftmperr[i]);
+	  }
+	  grInputs.push_back(gr1c);
 	}
 	
-	TGraphErrors * gr2 = new TGraphErrors(100);
+	TGraphErrors * gr2a = new TGraphErrors(100);
+	TGraphErrors * gr2b = new TGraphErrors(100);
+	TGraphErrors * gr2c = new TGraphErrors(100);
+	double V, A1, A2;
 	for(long unsigned int i = 0; i < 100; i++) {
-	  double step = (1.2 - 1)/100;
-	  //decFitDs->GetFFModel().FFpars
-	  gr2->SetPoint(i,1+i*step,FFfunctionsCLN(1+i*step,decFitDs->GetFFModel().FFpars));
-	  gr2->SetPointError(i,0,0);
+	  double step = (2.2 - 1.46)/100;
+	  FFfunctionsCLN_DsS(1.46+i*step, decFitDsS->GetFFModel().FFpars, V, A1, A2);
+	  gr2a->SetPoint(i,1.46+i*step, V);
+	  gr2a->SetPointError(i,0,0);
+	}
+
+	for(long unsigned int i = 0; i < 100; i++) {
+	  double step = (2.2 - 1.46)/100;
+	  FFfunctionsCLN_DsS(1.46+i*step, decFitDsS->GetFFModel().FFpars, V, A1, A2);
+	  gr2b->SetPoint(i,1.46+i*step, A1);
+	  gr2b->SetPointError(i,0,0);
+	}
+	for(long unsigned int i = 0; i < 100; i++) {
+	  double step = (2.2 - 1.46)/100;
+	  FFfunctionsCLN_DsS(1.46+i*step, decFitDsS->GetFFModel().FFpars, V, A1, A2);
+	  gr2c->SetPoint(i,1.46+i*step, A2);
+	  gr2c->SetPointError(i,0,0);
+	}
+	grFit.push_back(gr2a);
+	grFit.push_back(gr2b);
+	grFit.push_back(gr2c);
+
+	for(long unsigned int i = 0; i < grInputs.size(); i++) {
+	  int index = 2+i+theoryInputsDs.size();
+	  c->cd(index);
+	  grFit[i]->SetMarkerStyle(20);
+	  grFit[i]->SetMarkerSize(0.5);
+	  grFit[i]->GetYaxis()->SetRangeUser(0.,1.4);
+	  if(i==0) {
+	    grFit[i]->GetYaxis()->SetTitle("V(#it{w})");
+	    grFit[i]->GetXaxis()->SetTitle("#it{w}");
+	  }
+	  if(i==1) {
+	    grFit[i]->GetYaxis()->SetTitle("A_{1}(#it{w})");
+	    grFit[i]->GetXaxis()->SetTitle("#it{w}");
+	  }
+	  if(i==2) {
+	    grFit[i]->GetYaxis()->SetTitle("A_{2}(#it{w})");
+	    grFit[i]->GetXaxis()->SetTitle("#it{w}");
+	  }
+	  grFit[i]->Draw("APE");
+	  grInputs[i]->SetMarkerStyle(index+19);
+	  grInputs[i]->SetMarkerColor(index);
+	  grInputs[i]->Draw("PESAME");
+	}
+
+	grInputs.clear();
+	grFit.clear();
+	///_________________________________
+
+	for(long unsigned int k = 0; k < LHCbInputsDsS.size(); k++) {
+	  wtmp.clear();
+	  wtmplow.clear();
+	  wtmperr.clear();
+	  ftmp.clear();
+	  ftmperr.clear();
+	  if(LHCbInputsDsS[k] == "LHCb-PAPER-2019-046") {
+	    wtmp = wLHCb;
+	    wtmplow = wLHCblow;
+	    wtmperr = wLHCberr;
+	    ftmp = fLHCb;
+	    ftmperr = fLHCberr;
+	  }
+
+	  TGraphErrors * gr1d = new TGraphErrors(wtmp.size());
+	  for(long unsigned int i = 0; i < wtmp.size(); i++) {
+	    gr1d->SetPoint(i,wtmp[i],ftmp[i]);
+	    gr1d->SetPointError(i,wtmperr[i]/2,ftmperr[i]);
+	  }
+	  grInputs.push_back(gr1d);
 	}
 	
+	TGraphErrors * gr2d = new TGraphErrors(wtmp.size());
+	TF1 * funz = new TF1("funz", dGdwDst, 1, 1.4667, 5);
+	double rho2(0), R1(0), R2(0), F1(0), normLHCb(0);  
+	for(auto p : decFitDsS->GetFFModel().FFpars) {                                                                   
+	  if     (p.name.Contains("F1"))    F1   = p.value;                                     
+	  if     (p.name.Contains("rho2V")) rho2 = p.value;                                     
+	  if     (p.name.Contains("R1"))    R1   = p.value;                                     
+	  if     (p.name.Contains("R2"))    R2   = p.value;                                     
+	}                                                                                       
+	for(auto p : otherPars) {                                                               
+	  if     (p.name.Contains("normLHCb"))  normLHCb   = p.value;                           
+	}                                                            
+	
+	funz->SetParameter(0,F1);
+	funz->SetParameter(1,rho2);
+	funz->SetParameter(2,R1);	
+	funz->SetParameter(3,R2);
+	funz->SetParameter(4,normLHCb);
 
-	gr2->SetMarkerStyle(20);
-	gr2->SetMarkerSize(0.5);
-	gr2->GetYaxis()->SetRangeUser(0.8,1.4);
+	for(long unsigned int i = 0; i < wtmp.size(); i++) {
+	  double integral = funz->Integral(wtmplow[i],wtmplow[i]+wtmperr[i])/wtmperr[i];
+	  //cout <<  "FF LHCB: " << i << " " << wtmplow[i] << " "<< wtmplow[i]+wtmperr[i] << " " << wtmperr[i] << " " << integral << endl;
+	  gr2d->SetPoint(i,wtmp[i],integral);
+	  gr2d->SetPointError(i,wtmperr[i]/2,0);
+	}
+	
+	grFit.push_back(gr2d);
 
-	for(long unsigned int i = 0; i < gr.size(); i++) {
-	  c->cd(2+i);
-	  gr2->Draw("APE");
-	  gr[i]->SetMarkerStyle(21+i);
-	  gr[i]->SetMarkerColor(2+i);
-	  gr[i]->Draw("PESAME");
+
+	for(long unsigned int i = 0; i < grInputs.size(); i++) {
+	  int index = 2+i+theoryInputsDs.size()+theoryInputsDsS.size()*3;
+	  c->cd(index);
+	  cout << "CD: " << index << endl;
+	  grFit[i]->SetMarkerStyle(20);
+	  grFit[i]->SetLineStyle(kDashed);
+	  grFit[i]->SetLineColor(kRed);
+	  grFit[i]->SetMarkerSize(0.5);
+	  grFit[i]->GetYaxis()->SetRangeUser(1.3,3.3);
+	  if(i==0) {
+	    grFit[i]->GetYaxis()->SetTitle("d#Gamma/d#it{w} (a.u.)");
+	    grFit[i]->GetXaxis()->SetTitle("#it{w}");
+	  }
+	  grFit[i]->Draw("APE");
+	  grInputs[i]->SetMarkerStyle(index+19);
+	  grInputs[i]->SetMarkerColor(index);
+	  grInputs[i]->Draw("PESAME");
+
 	}
   
 	c->SaveAs("figs/projection_fit_simul_4D.pdf");

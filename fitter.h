@@ -66,7 +66,9 @@ decayRates* decRefDsS;
 pdfComp fitComp[4];
 
 
-std::vector<TString> theoryInputs;
+std::vector<TString> theoryInputsDs;
+std::vector<TString> theoryInputsDsS;
+std::vector<TString> LHCbInputsDsS;
 
 
 double _Bmass, _Dsmass, _DsSmass;
