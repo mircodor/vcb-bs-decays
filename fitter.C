@@ -16,7 +16,7 @@ bool fitter::RunFitter(TString filename)  {
     if (!Configure(filename)) return false;
     if (!DoFit(1)) return false;
     
-    TCanvas* c1 = new TCanvas("c1","c1",800,1200);
+    TCanvas* c1 = new TCanvas("c1","c1",600,1800);
     c1->Divide(theoryInputs.size()+1,1);
     Plot(c1);
      
@@ -210,10 +210,12 @@ void fitter::PrintConfigInfo(){
     for(auto p : FFModelRefDs.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
     cout << " - Bs->Ds*:  " << FFModelRefDsS.model << ", parameters: " << FFModelRefDsS.FFpars.size() << endl;
     for(auto p : FFModelRefDsS.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
+	cout << " Corresponding to BR(Bs->Ds): " <<  decRefDs->Eval_BR() << ", BR(Bs->Ds*):" << decRefDsS->Eval_BR() << endl;
     cout << "--------------------------------------------" << endl;
     cout << " FIT FF models for the templates: \n";
     cout << " - Bs->Ds :  " << FFModelFitDs.model << ", parameters: " << FFModelFitDs.FFpars.size() << endl;
     cout << " - Bs->Ds*:  " << FFModelFitDsS.model << ", parameters: " << FFModelFitDsS.FFpars.size() << endl;
+	cout << " Initial parameters give BR(Bs->Ds): " <<  decFitDs->Eval_BR() << ", BR(Bs->Ds*):" << decFitDsS->Eval_BR() << endl;
     cout << "--------------------------------------------" << endl;
     cout << " Fit parameters: " << fitPars.size() << "\n";
     cout << "\tnum\tname\tvalue\terror\tmin\tmax\tgconst \n";
@@ -260,7 +262,7 @@ bool fitter::FillMCcandidates(TString filename){
   for(int i=0; i<2; ++i){
 	cout << " Get acceptance from histo: ";
 	if(!hacc[i]){ cout << "NOT FOUND!!!" << endl; return false; }
-	else cout << hacc[0]->GetName() << ", which has min and max values:" << endl;
+	else cout << hacc[i]->GetName() << ", which has min and max values:" << endl;
 	
 	hacc[i]->GetMinimumAndMaximum(min,max);
 	cout << " component: " << i << "\t " << min << "\t " << max << endl;
@@ -372,7 +374,16 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
   }                                        
   _ndf -= fitter->GetNumFreePars();           
   cout << "chi2/ndf = " << _chi2 << "/" << _ndf;           
-  cout << ", prob = " << TMath::Prob(_chi2,_ndf) << endl; 
+  cout << ", prob = " << TMath::Prob(_chi2,_ndf) << endl;
+  
+  FFModel FFModelFitDs  =  decFitDs->GetFFModel();
+  FFModel FFModelFitDsS =  decFitDsS->GetFFModel();
+  cout << " Fitted FF models are: \n";
+  cout << " - Bs->Ds :  " << FFModelFitDs.model << ", parameters: " << FFModelFitDs.FFpars.size() << endl;
+  for(auto p : FFModelFitDs.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
+  cout << " - Bs->Ds*:  " << FFModelFitDsS.model << ", parameters: " << FFModelFitDsS.FFpars.size() << endl;
+  for(auto p : FFModelFitDsS.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
+  cout << " Which give BR(Bs->Ds): " <<  decFitDs->Eval_BR() << ", BR(Bs->Ds*):" << decFitDsS->Eval_BR() << endl;
 
   double negErr, posErr;              
   for(auto p : fitPars)
@@ -388,7 +399,7 @@ void fcn_tot(int &, double *, double &f, double *p, int ) {
 
 
 
-  SetAllPars(p);
+SetAllPars(p);
     
   FillHistogram();            
 
@@ -437,8 +448,6 @@ void fcn_tot(int &, double *, double &f, double *p, int ) {
    //add theory inputs to chi2
    for(unsigned int i = 0; i < theoryInputs.size(); i++) 
      addTheoryInputDs(theoryInputs[i],decFitDs->GetFFModel().FFpars,_chi2,_ndf);
-
-
 
  
   f = _chi2;

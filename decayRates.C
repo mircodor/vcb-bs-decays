@@ -53,10 +53,10 @@ void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& Gw){
     double G0=1;
 
     //link now the parameters to the coeff of the series
-    int count_d=0; double F1;
+    int count_d=0;
     for(auto p : FFpar){
-        if     (p.name.Contains("d")) {
-                dp[count_d] = p.value; ++count_d;
+        if(p.name.Contains("d")) {
+			  dp[count_d] = p.value; ++count_d;
         }
         else if(p.name == "G0") G0 = p.value;
         else { cout << "!!! ERROR FFfunctionsBGL for B->D, no valid parameters!" << endl;
@@ -71,7 +71,8 @@ void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& Gw){
      double tplus = (mB+mD)*(mB+mD);
      double tminus = (mB-mD)*(mB-mD);
      double mBv[4]={6.329,6.920,7.020,7.280};
-     double Pvscale = 1.;//2.52733;
+     double Pvscale = 1.;
+     //double Pvscale = 2.52733;
      double P_p  = Pvscale*P1pm(z,tplus,tminus,mBv);
      
      //outer function
