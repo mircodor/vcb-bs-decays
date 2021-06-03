@@ -50,13 +50,7 @@ private :
     double  _VcbEff;
     double  _tauB;
     bool    _isDst;
-    
-    void FFfunctionsCLN(double w, vector<parameter> FFpar, double& Gw);
-    void FFfunctionsCLN(double w, vector<parameter> FFpar, double& hw, double& R1w, double& R2w);
-    void FFfunctionsBGL(double w, vector<parameter> FFpar, double& Gw);
-    void FFfunctionsBGL(double w, vector<parameter> FFpar, double& hw, double& R1w, double& R2w);
-    
-    double P1pm(double z, double tplus, double tminus, double* mBc);
+    static double P1pm(double z, double tplus, double tminus, double* mBc);
     
     double dGdwD  (FFModel pFF,double VcbEff, double w);
     double dGdwDst(FFModel pFF,double VcbEff, double w);
@@ -71,6 +65,11 @@ private :
     double Pm1(double M, double m1, double m2);
     
 public :
+	static void FFfunctionsCLN(double w, vector<parameter> FFpar, double& Gw);
+	static void FFfunctionsCLN(double w, vector<parameter> FFpar, double& hw, double& R1w, double& R2w);
+	static void FFfunctionsBGL(double w, vector<parameter> FFpar, double& Gw);
+	static void FFfunctionsBGL(double w, vector<parameter> FFpar, double& hw, double& R1w, double& R2w);
+  
     double TF_dGdw      (double* w, double *) { return _isDst? dGdwDst(_pFF,_VcbEff,w[0]) : dGdwD(_pFF,_VcbEff,w[0]) ; };
     double TF_dGdwdctd  (double* w, double *) { return _isDst? dGdwdctdDst(_pFF,_VcbEff,w[0],w[1]) : 0; };
     double TF_dGdAngle  (double* w, double *p) { return _isDst? dGdwdAnglesDst(_pFF,_VcbEff,p[0],w[0],w[1],w[2]) : 0; };

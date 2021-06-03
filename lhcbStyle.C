@@ -1,3 +1,8 @@
+#include "TROOT.h"
+#include "TStyle.h"
+#include "TText.h"
+#include "TLatex.h"
+
 // all users - please change the name of this file to lhcbStyle.C
 // Commits to lhcbdocs svn of .C files are not allowed
 void lhcbStyle(){
@@ -131,8 +136,8 @@ void lhcbStyle(){
   lhcbStyle->SetOptFit(0);
   //lhcbStyle->SetOptFit(1011); // order is probability, Chi2, errors, parameters
   //titles
-  lhcbStyle->SetTitleOffset(0.95,"X");
-  lhcbStyle->SetTitleOffset(0.95,"Y");
+  lhcbStyle->SetTitleOffset(1.0,"X");
+  lhcbStyle->SetTitleOffset(1.2,"Y");
   lhcbStyle->SetTitleOffset(1.2,"Z");
   lhcbStyle->SetTitleFillColor(0);
   lhcbStyle->SetTitleStyle(0);

@@ -52,6 +52,34 @@ class pdfComp
   }                                                                        
 };                          
 
+
+class extInputs {                                                                                                                                 
+ public:
+  int dim;
+  std::vector<TString> name;
+  std::vector<double>  x;
+  std::vector<double>  x_err;
+  std::vector<double>  val;
+  std::vector<double>  val_err;
+  map<TString,double>  corr;
+  map<TString,double>  cov;
+  TMatrixD corr_matrix;                        
+  TMatrixD cov_matrix;                            
+  double cov_inv_matrix[30][30];                   
+  void print() {
+	cout << " dimension: " << dim << endl;
+	for(int i =0; i<dim; ++i)
+	  cout << "\t" << name[i] << "\t" << x[i] << "\t" << x_err[i] << "\t" << val[i] << "\t" << val_err[i] << endl;
+	cout << " covariance matrix " << endl;
+	cov_matrix.Print();
+  }
+
+  extInputs() {};                                                           
+  ~extInputs() {};                      
+};                                
+
+
+
 vector<MCcand>    mccand;
 vector<parameter> otherPars;
 vector<parameter> fitPars;
@@ -65,16 +93,13 @@ decayRates* decRefDsS;
 
 pdfComp fitComp[4];
 
+std::vector<TString> theoryInputs;
 
-std::vector<TString> theoryInputsDs;
-std::vector<TString> theoryInputsDsS;
-std::vector<TString> LHCbInputsDsS;
-
-
-double _Bmass, _Dsmass, _DsSmass;
+double _Bmass{Mass::Bs}, _Dsmass{Mass::Ds}, _DsSmass{Mass::DsS};
 double _chi2, _ndf;
 TH1D * hData;
 TH1D* hacc[2];
+std::map<TString,extInputs> _extInputs;
 
 bool _rate1D = false;
 
@@ -83,6 +108,7 @@ void   SetAllPars();
 void   FillHistogram();
 void   fcn_tot(int &, double *, double &, double *, int );
 void   calculateYields();
+double FFfunctions(TString xname, double x, double xerr);
 
 class fitter
 {
@@ -91,9 +117,11 @@ class fitter
   bool DoFit(double strategy=2, bool useHesse=true, bool useMinos=false);
   void PrintConfigInfo();
   bool FillMCcandidates(TString filename);
-  bool Plot(TCanvas *);
+  bool DoProjection();
   bool ReadConfigFile(TString filename);
-  void SetDataAndBkg();
+  bool SetDataAndBkg();
+  bool SetExtInputs();
+  void DrawResiduals(TH1D* hD, TH1D* hF, TH1D* hp);
 
  public: 
   bool RunFitter(TString filename);
