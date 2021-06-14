@@ -28,7 +28,7 @@ bool fitter::Configure(TString filename) {
   cout << " Configuration file read: \n";
   cout << "----------------------------------------------------------\n";
 
-  //Take data and all histograms for the fit (hardocded)
+  //Take data and all histograms for the fit (hardcoded)
   if(!SetDataAndBkg()) return false;
 
   //Read the configuration file to set the fit
@@ -467,10 +467,10 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
   }
   cout << "MIGRAD status = " << istat << endl;  
 
-  if (istat!=3){  
-    cout << "Fit failed after 3 attempts" << endl;
-    return false;  
-  }
+ // if (istat!=3){
+   // cout << "Fit failed after 3 attempts" << endl;
+    //return false;
+ // }
 
   if(useHesse){          
     fitter->mnexcm("HESSE", arglist ,2, ierflg);     
@@ -479,7 +479,7 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
   }                      
   if (istat!=3){           
     cout << "Hesse failed" << endl;     
-    return false;      
+    //return false;
   }                                                           
   
   if(useMinos){                                     
@@ -490,7 +490,7 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
 
   if (istat!=3){  
     cout << "Minos failed" << endl;       
-    return false;                               
+ //   return false;
   }                                        
   _ndf -= fitter->GetNumFreePars();           
   cout << "chi2/ndf = " << _chi2 << "/" << _ndf;           
@@ -507,9 +507,9 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
   FFModel FFModelFitDsS =  decFitDsS->GetFFModel();
   cout << " Fitted FF models are: \n";
   cout << " - Bs->Ds :  " << FFModelFitDs.model << ", parameters: " << FFModelFitDs.FFpars.size() << endl;
-  for(auto p : FFModelFitDs.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
+  for(auto p : FFModelFitDs.FFpars)  p.print();
   cout << " - Bs->Ds*:  " << FFModelFitDsS.model << ", parameters: " << FFModelFitDsS.FFpars.size() << endl;
-  for(auto p : FFModelFitDsS.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
+  for(auto p : FFModelFitDsS.FFpars) p.print();
   cout << " Which give BR(Bs->Ds): " <<  decFitDs->Eval_BR() << ", BR(Bs->Ds*):" << decFitDsS->Eval_BR() << endl;
 
   return true;
@@ -609,9 +609,14 @@ double FFfunctions(TString xname, double w, double werr) {
 	  double hw{0}, R1w{0}, R2w{0};
 	  FFModel ffmodel = decFitDsS->GetFFModel();
 	  if     (ffmodel.model == "CLN") decayRates::FFfunctionsCLN(w, ffmodel.FFpars, hw, R1w, R2w);
-	  else if(ffmodel.model == "BGL") decayRates::FFfunctionsBGL(w, ffmodel.FFpars, hw, R1w, R2w);
+	  else if(ffmodel.model == "BGL"){
+		double wp = 0;
+		//if(xname.Contains("a2") && w==1) wp = 0.001;
+		decayRates::FFfunctionsBGL(w+wp, ffmodel.FFpars, hw, R1w, R2w);
+	  }
 	  else { cout << "Wrong FF model for decFitDs in FFfunctions!"; return 1e20; }
 	
+	  /*
 	  double fw = hw * sqrt(mB*mDsS)*(w+1.);
 	  double gw = R1w*fw/(w+1)/mB/mDsS;
 	  double q2 = mB*mB + mDsS*mDsS - 2*w*mB*mDsS;
@@ -622,16 +627,25 @@ double FFfunctions(TString xname, double w, double werr) {
 	  double V = (mB+mDsS)/2.0*gw;
 	  double A1 = 1/(mB+mDsS)*fw;
 	  double A2 = (mB+mDsS)/lambda*( (mB*mB-mDsS*mDsS-q2)*fw - 2.0*mDsS*F1w );
+	   */
+	  
+	  double r = mDsS/mB;
+	  double R = 2.*sqrt(r)/(1.+r);
+	  double A1 = hw/2.*(w+1.)*R;
+	  double V  = R1w*hw/R;
+	  double A2 = R2w*hw/R;
 	
-	  if     (xname.Contains("v"))  FFvalue = V;
-	  else if(xname.Contains("a1")) FFvalue = A1;
-	  else if(xname.Contains("a2")) FFvalue = A2;
+	  if     (xname.Contains("v")) { FFvalue = V;  if(FFvalue!=FFvalue) { cout << " w = " << w << ", V  = " <<  V  << endl;} }
+	  else if(xname.Contains("a1")){ FFvalue = A1; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A1 = " <<  A1 << endl;} }
+	  else if(xname.Contains("a2")){ FFvalue = A2; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A2 = " <<  A2 << endl;} }
 	  else{
 		cout << "Wrong name for x point for the external input in FFfunction!" << endl;
 		return 1e20;
 	  }
 	}
   }
+  
+  
   return FFvalue;
 }
 
@@ -657,6 +671,12 @@ void FillHistogram() {
     if (wFF!=wFF) {
         cout << "wFF is NaN, this should never happen!" << endl;
         printf("num: %f den: %f rateDs: %f rateDsS: %f \n", num, cand.den, rateDs, rateDsS);
+		FFModel FFModelFitDs  =  decFitDs->GetFFModel();
+		FFModel FFModelFitDsS =  decFitDsS->GetFFModel();
+		cout << " - Bs->Ds :  " << FFModelFitDs.model << ", parameters: " << FFModelFitDs.FFpars.size() << endl;
+	    for(auto p : FFModelFitDs.FFpars) p.print();
+	    cout << " - Bs->Ds*:  " << FFModelFitDsS.model << ", parameters: " << FFModelFitDsS.FFpars.size() << endl;
+	    for(auto p : FFModelFitDsS.FFpars) p.print();
 	
         continue;
     }
@@ -864,8 +884,7 @@ bool fitter::DoProjection() {
 	cperp->SaveAs("fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   
   
-  
-  TString fmodels[]  ={"HPQCD","MILC","LCSRDs"};
+  TString fmodels[]  ={"HPQCD_Ds","MILC","LCSRDs"};
   const int Nfmodels = sizeof(fmodels)/sizeof(fmodels[0]);
   int fcolor[]={1,2,36};
   int marker[]={21,22,23};
@@ -893,7 +912,7 @@ bool fitter::DoProjection() {
   grfplusFit->SetLineWidth(2);
   grfplusFit->SetLineColor(9);
   for(int p=0;p<1000;++p){
-	double w = 1. + 1.4/1000*p;
+	double w = 1.0000001 + 1.4/1000*p;
 	grfplusFit->SetPoint(p,w,FFfunctions("f",w,0));
   }
   TCanvas* cf = new TCanvas("cf","cf",800,800);
@@ -903,7 +922,7 @@ bool fitter::DoProjection() {
   gf->Add(grfplusFit,"l");
   for(int im=0; im<Nfmodels; ++im) gf->Add(grfplus[im],"p");
   gf->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
-  gf->GetHistogram()->GetYaxis()->SetRangeUser(0,1.5);
+  gf->GetHistogram()->GetYaxis()->SetRangeUser(0,1.8);
   gf->GetYaxis()->SetTitle("#it{f}_{+}(#it{w})");
   gf->GetXaxis()->SetTitle("#it{w}");
   gf->Draw("a");
@@ -922,10 +941,10 @@ bool fitter::DoProjection() {
   
   
   
-  TString VAmodels[] ={"LCSRDsS"};
+  TString VAmodels[] ={"HPQCD_DsS","LCSRDsS"};
   const int NVAmodels = sizeof(VAmodels)/sizeof(VAmodels[0]);
-  int colorsVA[]={36};
-  int markersVA[]={23};
+  int colorsVA[]={1,36};
+  int markersVA[]={21,23};
   TGraphErrors* grDst[3][NVAmodels];
   for(int im=0; im<NVAmodels; ++im){
 	for(int i=0;i<3;++i) {
@@ -944,6 +963,7 @@ bool fitter::DoProjection() {
 	  cout << VAmodels[im] << " input file not found!" << endl; return false;
 	}
 	while(ftmp >> n >> x >> y >> err) {
+	  //cout << n << x << y << err<< endl;
 	  if     (n.Contains("v") ){ grDst[0][im]->SetPoint(ipv,x,y);  grDst[0][im]->SetPointError(ipv,0,err);  ipv++; }
 	  else if(n.Contains("a1")){ grDst[1][im]->SetPoint(ipa1,x,y); grDst[1][im]->SetPointError(ipa1,0,err); ipa1++;}
 	  else if(n.Contains("a2")){ grDst[2][im]->SetPoint(ipa2,x,y); grDst[2][im]->SetPointError(ipa2,0,err); ipa2++;}
@@ -957,7 +977,7 @@ bool fitter::DoProjection() {
 	grDstFit[i]->SetLineColor(9);
   }
   for(int p=0;p<1000;++p){
-	double w = 1.00001 + 1.2/1000*p;
+	double w = 1.0000001 + 1.2/1000*p;
 	grDstFit[0]->SetPoint(p,w,FFfunctions("v" ,w,0));
 	grDstFit[1]->SetPoint(p,w,FFfunctions("a1",w,0));
 	grDstFit[2]->SetPoint(p,w,FFfunctions("a2",w,0));
@@ -965,9 +985,9 @@ bool fitter::DoProjection() {
   
   TGraphErrors* grDstHPQCD = new TGraphErrors();
   grDstHPQCD->SetLineWidth(2);
-  grDstHPQCD->SetMarkerColor(1);
-  grDstHPQCD->SetLineColor(1);
-  grDstHPQCD->SetMarkerStyle(21);
+  grDstHPQCD->SetMarkerColor(4);
+  grDstHPQCD->SetLineColor(4);
+  grDstHPQCD->SetMarkerStyle(20);
   grDstHPQCD->SetMarkerSize(0.8);
   double mB = _Bmass; double mDsS = _DsSmass;
   double hpqcdDsS  = 1./(mB+mDsS)*0.902* sqrt(mB*mDsS)*(2.);
@@ -989,16 +1009,19 @@ bool fitter::DoProjection() {
 	if(cp==1) gVA[cp]->Add(grDstHPQCD,"p");
     gVA[cp]->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
 	gVA[cp]->GetHistogram()->GetYaxis()->SetRangeUser(0,1.5);
+	if(cp==0) gVA[cp]->GetHistogram()->GetYaxis()->SetRangeUser(0,2.1);
 	gVA[cp]->GetYaxis()->SetTitle(titley[cp]);
 	gVA[cp]->GetXaxis()->SetTitle("#it{w}");
 	gVA[cp]->Draw("a");
-	legVA[cp] = new TLegend(0.3,0.80,0.5,0.95);
+	legVA[cp] = new TLegend(0.35,0.75,0.55,0.95);
 	legVA[cp]->SetFillStyle(0);
 	legVA[cp]->SetTextSize(0.040);
 	legVA[cp]->SetBorderSize(0);
 	legVA[cp]->SetTextFont(132);
-	if(cp==1) legVA[cp]->AddEntry(grDstHPQCD,"HPQCD, PRD99 (2019) 11, 114512","pe");
-	legVA[cp]->AddEntry(grDst[cp][0],"LCSR, EPJC80 (2020) 4, 347","pe");
+	if(cp==0) gVA[cp]->GetHistogram()->GetYaxis()->SetRangeUser(0,2.1);
+	if(cp==1) legVA[cp]->AddEntry(grDstHPQCD,"HPQCD, PRD99 (2019) 114512","pe");
+	legVA[cp]->AddEntry(grDst[cp][0],"HPQCD, arXiv:2105.11433","pe");
+	legVA[cp]->AddEntry(grDst[cp][1],"LCSR, EPJC80 (2020) 4, 347","pe");
 	legVA[cp]->AddEntry(grDstFit[cp],"Fit","l");
 	legVA[cp]->Draw("SAME");
 	
@@ -1066,8 +1089,8 @@ bool fitter::DoProjection() {
   hpullw->Reset();
   DrawResiduals(hw,hwFit,hpullw);
   
-  cf->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
-  cf->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
+  cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
+  cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   
   return true;
 	
