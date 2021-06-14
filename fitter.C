@@ -467,10 +467,10 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
   }
   cout << "MIGRAD status = " << istat << endl;  
 
- // if (istat!=3){
-   // cout << "Fit failed after 3 attempts" << endl;
-    //return false;
- // }
+  if (istat!=3){
+    cout << "Fit failed after 3 attempts" << endl;
+    return false;
+  }
 
   if(useHesse){          
     fitter->mnexcm("HESSE", arglist ,2, ierflg);     
@@ -479,7 +479,7 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
   }                      
   if (istat!=3){           
     cout << "Hesse failed" << endl;     
-    //return false;
+    return false;
   }                                                           
   
   if(useMinos){                                     
@@ -490,27 +490,14 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
 
   if (istat!=3){  
     cout << "Minos failed" << endl;       
- //   return false;
+    return false;
   }                                        
   _ndf -= fitter->GetNumFreePars();           
   cout << "chi2/ndf = " << _chi2 << "/" << _ndf;           
   cout << ", prob = " << TMath::Prob(_chi2,_ndf) << endl; 
 
-  double negErr, posErr;              
-  for(auto p : fitPars)
-    fitter->mnpout(p.inum,p.name,p.value,p.error,negErr,posErr,ierflg);
-  
-  fitter->Delete();
-  
   cout << "----------------------------------------------------------" << endl;
-  FFModel FFModelFitDs  =  decFitDs->GetFFModel();
-  FFModel FFModelFitDsS =  decFitDsS->GetFFModel();
-  cout << " Fitted FF models are: \n";
-  cout << " - Bs->Ds :  " << FFModelFitDs.model << ", parameters: " << FFModelFitDs.FFpars.size() << endl;
-  for(auto p : FFModelFitDs.FFpars)  p.print();
-  cout << " - Bs->Ds*:  " << FFModelFitDsS.model << ", parameters: " << FFModelFitDsS.FFpars.size() << endl;
-  for(auto p : FFModelFitDsS.FFpars) p.print();
-  cout << " Which give BR(Bs->Ds): " <<  decFitDs->Eval_BR() << ", BR(Bs->Ds*):" << decFitDsS->Eval_BR() << endl;
+  cout << " Fit results give BR(Bs->Ds): " <<  decFitDs->Eval_BR() << ", BR(Bs->Ds*):" << decFitDsS->Eval_BR() << endl;
 
   return true;
 
@@ -733,6 +720,9 @@ void SetAllPars() {
             fitPars[i].inum = i; }
     }
 }
+
+
+
 
 void calculateYields() {
 
