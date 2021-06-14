@@ -1,5 +1,5 @@
 #include "fitter.h"
-#include "lhcbStyle.C"
+#include "plotStyle.C"
 #include <TVirtualFitter.h>                        
 #include <TFitter.h>  
 #include <TMinuit.h>
@@ -819,7 +819,7 @@ void fitter::DrawResiduals(TH1D* hD, TH1D* hF, TH1D* hp){
 
 bool fitter::DoProjection() {
   
-	lhcbStyle();
+	plotStyle();
 	FFModel FFModelFitDs  =  decFitDs->GetFFModel();
 	FFModel FFModelFitDsS =  decFitDsS->GetFFModel();
   
