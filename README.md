@@ -84,6 +84,8 @@ The line `Other-Parameters` indicates the number of other parameters used in the
 
 The line `Correlations` is followed by the a number that indicates the number of correlated parameters used in the fit (excluding the form factors parameters). The correlations are simply indicated using the name of both parameters followed by the value of the correlation coefficient.
 
-The line `Theory-Inputs` contains the number and the names of the theory/experimental inputs that will be used in the fit. Available options are: `HPQCD`, `LCSRDs`, `LCSRDsS`, `LHCb-PAPER-2019-046` and `MILC`. The fit will automatically include this additional inputs and minimise the `chi2` simultaneously.
+The line `Theory-Inputs` contains the number and the names of the theory/experimental inputs that will be used in the fit. Available options are: `HPQCD_Ds`, `HPQCD_DsS`, `LCSRDs`, `LCSRDsS`, `LHCb-PAPER-2019-046` and `MILC`. The fit will automatically include this additional inputs and minimise the `chi2` simultaneously.
+
+
 
 
