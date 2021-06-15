@@ -816,14 +816,13 @@ void fitter::DrawResiduals(TH1D* hD, TH1D* hF, TH1D* hp){
   
 }
 
-
 bool fitter::DoProjection() {
   
 	plotStyle();
 	FFModel FFModelFitDs  =  decFitDs->GetFFModel();
 	FFModel FFModelFitDsS =  decFitDsS->GetFFModel();
   
-	TCanvas* cperp = new TCanvas("cperp", "cperp", 800,1200);
+	TCanvas* cperp = new TCanvas("cperp", "cperp", 800,800);
 	TPad* upperPad; TPad* lowerPad;
 	upperPad = new TPad("plot_perp", "plot_perp", .005, .2525, .995, .995);
 	lowerPad = new TPad("residuals_perp", "residuals_perp", .005, .005, .995, .2475);
@@ -889,12 +888,18 @@ bool fitter::DoProjection() {
   int fcolor[]={1,2,36};
   int marker[]={21,22,23};
   TGraphErrors* grfplus[Nfmodels];
+  TGraphErrors* grfpluspull[Nfmodels];
   for(int im=0; im<Nfmodels; ++im){
 	grfplus[im] = new TGraphErrors();
 	grfplus[im]->SetMarkerColor(fcolor[im]);
 	grfplus[im]->SetLineColor(fcolor[im]);
 	grfplus[im]->SetMarkerStyle(marker[im]);
 	grfplus[im]->SetMarkerSize(0.8);
+	grfpluspull[im] = new TGraphErrors();
+	grfpluspull[im]->SetMarkerColor(fcolor[im]);
+	grfpluspull[im]->SetLineColor(fcolor[im]);
+	grfpluspull[im]->SetMarkerStyle(marker[im]);
+	grfpluspull[im]->SetMarkerSize(1);
 	TString n;
 	double x, y, err;
 	int ip = 0;
@@ -905,6 +910,8 @@ bool fitter::DoProjection() {
 	while(ftmp >> n >> x >> y >> err) {
 	  grfplus[im]->SetPoint(ip,x,y);
 	  grfplus[im]->SetPointError(ip,0,err);
+	  grfpluspull[im]->SetPoint(ip,x,(y-FFfunctions("f",x,0))/err);
+	  grfpluspull[im]->SetPointError(ip,0,0);
 	  ip++;
 	}
   }
@@ -916,8 +923,19 @@ bool fitter::DoProjection() {
 	grfplusFit->SetPoint(p,w,FFfunctions("f",w,0));
   }
   TCanvas* cf = new TCanvas("cf","cf",800,800);
-  cf->SetLeftMargin(0.2);
-  cf->SetRightMargin(0.1);
+  cf->cd();
+  //cf->SetLeftMargin(0.2);
+  //cf->SetRightMargin(0.1);
+  TPad*    upperPadcf = new TPad("upperPadcf", "upperPadcf",   .005, .2525, .995, .995);   
+  TPad*    lowerPadcf = new TPad("lowerPadcf", "lowerPadcf",   .005, .005, .995, .2475);   
+  upperPadcf->SetLeftMargin(0.2);                                                         
+  upperPadcf->SetRightMargin(0.1); 
+  lowerPadcf->SetLeftMargin(0.2);                                                         
+  lowerPadcf->SetRightMargin(0.1); 
+  upperPadcf->Draw();                                                                     
+  lowerPadcf->Draw();                                                                     
+  upperPadcf->cd();                                                                       
+
   TMultiGraph* gf = new TMultiGraph();
   gf->Add(grfplusFit,"l");
   for(int im=0; im<Nfmodels; ++im) gf->Add(grfplus[im],"p");
@@ -936,6 +954,32 @@ bool fitter::DoProjection() {
   for(int im=0; im<Nfmodels; ++im) legf->AddEntry(grfplus[im],fmodelsName[im],"pe");
   legf->AddEntry(grfplusFit,"Fit","l");
   legf->Draw("SAME");
+
+
+  lowerPadcf->cd();                                                                       
+  TMultiGraph* gfpull = new TMultiGraph();
+  for(int im=0; im<Nfmodels; ++im) gfpull->Add(grfpluspull[im],"p"); 
+  gfpull->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
+  gfpull->GetHistogram()->GetYaxis()->SetNdivisions(505);
+  gfpull->GetHistogram()->GetYaxis()->SetLabelSize(0.13);
+  gfpull->GetHistogram()->GetYaxis()->SetRangeUser(-5,5);
+  gfpull->GetHistogram()->GetXaxis()->SetLabelSize(0);
+  gfpull->GetHistogram()->GetYaxis()->SetTitle("Pulls");
+  gfpull->GetHistogram()->GetYaxis()->SetTitleSize(0.15);
+  gfpull->GetHistogram()->GetYaxis()->SetTitleOffset(0.4);
+  gfpull->GetHistogram()->GetXaxis()->SetTitleSize(0);
+  
+  TLine * l1gf = new TLine(gfpull->GetHistogram()->GetXaxis()->GetXmin(),-3,gfpull->GetHistogram()->GetXaxis()->GetXmax(),-3);
+  TLine * l2gf = new TLine(gfpull->GetHistogram()->GetXaxis()->GetXmin(),+3,gfpull->GetHistogram()->GetXaxis()->GetXmax(),+3);
+  TLine * l3gf = new TLine(gfpull->GetHistogram()->GetXaxis()->GetXmin(),0,gfpull->GetHistogram()->GetXaxis()->GetXmax(),0);
+  l1gf->SetLineStyle(kDashed);
+  l2gf->SetLineStyle(kDashed);
+  l3gf->SetLineStyle(kDashed);
+  gfpull->Draw("a");
+  l1gf->Draw("SAME");
+  l2gf->Draw("SAME");
+  l3gf->Draw("SAME");
+
   cf->SaveAs("fit_projection_fplus_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
   cf->SaveAs("fit_projection_fplus_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   
@@ -946,6 +990,7 @@ bool fitter::DoProjection() {
   int colorsVA[]={1,36};
   int markersVA[]={21,23};
   TGraphErrors* grDst[3][NVAmodels];
+  TGraphErrors* grDstpull[3][NVAmodels];
   for(int im=0; im<NVAmodels; ++im){
 	for(int i=0;i<3;++i) {
 	  grDst[i][im] = new TGraphErrors();
@@ -954,6 +999,12 @@ bool fitter::DoProjection() {
 	  grDst[i][im]->SetLineColor(colorsVA[im]);
 	  grDst[i][im]->SetMarkerStyle(markersVA[im]);
 	  grDst[i][im]->SetMarkerSize(0.8);
+	  grDstpull[i][im] = new TGraphErrors();
+	  grDstpull[i][im]->SetLineWidth(2);
+	  grDstpull[i][im]->SetMarkerColor(colorsVA[im]);
+	  grDstpull[i][im]->SetLineColor(colorsVA[im]);
+	  grDstpull[i][im]->SetMarkerStyle(markersVA[im]);
+	  grDstpull[i][im]->SetMarkerSize(1);
 	}
 	TString n;
 	double x, y, err;
@@ -964,9 +1015,21 @@ bool fitter::DoProjection() {
 	}
 	while(ftmp >> n >> x >> y >> err) {
 	  //cout << n << x << y << err<< endl;
-	  if     (n.Contains("v") ){ grDst[0][im]->SetPoint(ipv,x,y);  grDst[0][im]->SetPointError(ipv,0,err);  ipv++; }
-	  else if(n.Contains("a1")){ grDst[1][im]->SetPoint(ipa1,x,y); grDst[1][im]->SetPointError(ipa1,0,err); ipa1++;}
-	  else if(n.Contains("a2")){ grDst[2][im]->SetPoint(ipa2,x,y); grDst[2][im]->SetPointError(ipa2,0,err); ipa2++;}
+	  if     (n.Contains("v") ){ 
+	    grDst[0][im]->SetPoint(ipv,x,y);  grDst[0][im]->SetPointError(ipv,0,err);  
+	    grDstpull[0][im]->SetPoint(ipv,x,(y-FFfunctions("v" ,x,0))/err);  grDstpull[0][im]->SetPointError(ipv,0,0);  
+	    ipv++; 
+	  }
+	  else if(n.Contains("a1")){ 
+	    grDst[1][im]->SetPoint(ipa1,x,y); grDst[1][im]->SetPointError(ipa1,0,err); 
+	    grDstpull[1][im]->SetPoint(ipa1,x,(y-FFfunctions("a1",x,0))/err); grDstpull[1][im]->SetPointError(ipa1,0,0); 
+	    ipa1++;
+	  }
+	  else if(n.Contains("a2")){ 
+	    grDst[2][im]->SetPoint(ipa2,x,y); grDst[2][im]->SetPointError(ipa2,0,err); 
+	    grDstpull[2][im]->SetPoint(ipa2,x,(y-FFfunctions("a2",x,0))/err); grDstpull[2][im]->SetPointError(ipa2,0,0); 
+	    ipa2++;
+	  }
 	}
   }
   TGraph* grDstFit[3];
@@ -989,26 +1052,55 @@ bool fitter::DoProjection() {
   grDstHPQCD->SetLineColor(4);
   grDstHPQCD->SetMarkerStyle(20);
   grDstHPQCD->SetMarkerSize(0.8);
+  TGraphErrors* grDstHPQCDpull = new TGraphErrors();
+  grDstHPQCDpull->SetLineWidth(2);
+  grDstHPQCDpull->SetMarkerColor(4);
+  grDstHPQCDpull->SetLineColor(4);
+  grDstHPQCDpull->SetMarkerStyle(20);
+  grDstHPQCDpull->SetMarkerSize(1);
   double mB = _Bmass; double mDsS = _DsSmass;
   double hpqcdDsS  = 1./(mB+mDsS)*0.902* sqrt(mB*mDsS)*(2.);
   double ehpqcdDsS = 1./(mB+mDsS)*0.013 * sqrt(mB*mDsS)*(2.);
   grDstHPQCD->SetPoint(0,1,hpqcdDsS);
   grDstHPQCD->SetPointError(0,0,ehpqcdDsS);
+  grDstHPQCDpull->SetPoint(0,1,(hpqcdDsS-FFfunctions("a1",1,0))/ehpqcdDsS);
+  grDstHPQCDpull->SetPointError(0,0,0);
   
   TMultiGraph* gVA[3];
+  TMultiGraph* gVApull[3];
   TCanvas* cVA[3];
+  TPad * upperPadVA[3];
+  TPad * lowerPadVA[3];
   TLegend * legVA[3];
   TString funcname[]={"V","A1","A2"};
   for(int cp=0;cp<3;++cp){
 	cVA[cp] = new TCanvas(Form("c_%i",cp),Form("c_%i",cp),800,800);
-	cVA[cp]->SetLeftMargin(0.2);
-	cVA[cp]->SetRightMargin(0.1);
+	//cVA[cp]->SetLeftMargin(0.2);
+	//cVA[cp]->SetRightMargin(0.1);
+	upperPadVA[cp] = new TPad(Form("upperPad_%i",cp), Form("upperPad_%i",cp),   .005, .2525, .995, .995);   
+	lowerPadVA[cp] = new TPad(Form("lowerPad_%i",cp), Form("lowerPad_%i",cp),   .005, .005, .995, .2475);   
+	upperPadVA[cp]->SetLeftMargin(0.2);
+	upperPadVA[cp]->SetRightMargin(0.1);
+	lowerPadVA[cp]->SetLeftMargin(0.2);
+	lowerPadVA[cp]->SetRightMargin(0.1);
+	upperPadVA[cp]->Draw();
+	lowerPadVA[cp]->Draw();
+	upperPadVA[cp]->cd();
 	gVA[cp] = new TMultiGraph();
+	gVApull[cp] = new TMultiGraph();
 	gVA[cp]->Add(grDstFit[cp],"l");
-	for(int m=0; m<NVAmodels; m++) gVA[cp]->Add(grDst[cp][m],"p");
-	if(cp==1) gVA[cp]->Add(grDstHPQCD,"p");
-    gVA[cp]->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
+	for(int m=0; m<NVAmodels; m++) {
+	  gVA[cp]->Add(grDst[cp][m],"p");
+	  gVApull[cp]->Add(grDstpull[cp][m],"p");	
+	}
+	if(cp==1) {
+	  gVA[cp]->Add(grDstHPQCD,"p");
+	  gVApull[cp]->Add(grDstHPQCDpull,"p");
+	}
+	gVA[cp]->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
 	gVA[cp]->GetHistogram()->GetYaxis()->SetRangeUser(0,1.5);
+	gVApull[cp]->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
+	gVApull[cp]->GetHistogram()->GetYaxis()->SetRangeUser(-5,5);
 	if(cp==0) gVA[cp]->GetHistogram()->GetYaxis()->SetRangeUser(0,2.1);
 	gVA[cp]->GetYaxis()->SetTitle(titley[cp]);
 	gVA[cp]->GetXaxis()->SetTitle("#it{w}");
@@ -1025,6 +1117,28 @@ bool fitter::DoProjection() {
 	legVA[cp]->AddEntry(grDstFit[cp],"Fit","l");
 	legVA[cp]->Draw("SAME");
 	
+	lowerPadVA[cp]->cd();
+	gVApull[cp]->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
+	gVApull[cp]->GetHistogram()->GetYaxis()->SetNdivisions(505);
+	gVApull[cp]->GetHistogram()->GetYaxis()->SetLabelSize(0.13);
+	gVApull[cp]->GetHistogram()->GetYaxis()->SetRangeUser(-5,5);
+	gVApull[cp]->GetHistogram()->GetXaxis()->SetLabelSize(0);
+	gVApull[cp]->GetHistogram()->GetYaxis()->SetTitle("Pulls");
+	gVApull[cp]->GetHistogram()->GetYaxis()->SetTitleSize(0.15);
+	gVApull[cp]->GetHistogram()->GetYaxis()->SetTitleOffset(0.4);
+	gVApull[cp]->GetHistogram()->GetXaxis()->SetTitleSize(0);
+	
+	TLine * l1gf = new TLine(gVApull[cp]->GetHistogram()->GetXaxis()->GetXmin(),-3,gVApull[cp]->GetHistogram()->GetXaxis()->GetXmax(),-3);
+	TLine * l2gf = new TLine(gVApull[cp]->GetHistogram()->GetXaxis()->GetXmin(),+3,gVApull[cp]->GetHistogram()->GetXaxis()->GetXmax(),+3);
+	TLine * l3gf = new TLine(gVApull[cp]->GetHistogram()->GetXaxis()->GetXmin(),0,gVApull[cp]->GetHistogram()->GetXaxis()->GetXmax(),0);
+	l1gf->SetLineStyle(kDashed);
+	l2gf->SetLineStyle(kDashed);
+	l3gf->SetLineStyle(kDashed);
+	gVApull[cp]->Draw("a");
+	l1gf->Draw("SAME");
+	l2gf->Draw("SAME");
+	l3gf->Draw("SAME");
+
 	cVA[cp]->SaveAs("fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
 	cVA[cp]->SaveAs("fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   }
@@ -1048,7 +1162,7 @@ bool fitter::DoProjection() {
 	ip++;
   }
   
-  TCanvas* cw = new TCanvas("cw", "cw", 800,1200);
+  TCanvas* cw = new TCanvas("cw", "cw", 800,800);
   TPad* upperPadw; TPad* lowerPadw;
   upperPadw = new TPad("plot_w", "plot_w", .005, .2525, .995, .995);
   lowerPadw = new TPad("residuals_w", "residuals_w", .005, .005, .995, .2475);
