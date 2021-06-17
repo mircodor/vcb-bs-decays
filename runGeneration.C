@@ -1,5 +1,5 @@
 #include "Tools.h"
-#include "decayRates.h"
+#include "newDecayRate.h"
 
 void generateSignalTemplates(TString filename = "config/fit_testCLN.cfg",
                              unsigned int nentries = 5e5,
@@ -208,7 +208,7 @@ void generateSignalTemplates(TString filename = "config/fit_testCLN.cfg",
 
 void runGeneration(TString configFile = "config/fit_testCLN.cfg")
 {
-  gROOT->ProcessLine(".L ./decayRates.C+");
+  gROOT->ProcessLine(".L ./newDecayRate.C+");
   generateSignalTemplates(configFile);
 }
 

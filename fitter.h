@@ -2,7 +2,7 @@
 #define fitter_h
 
 #include "Tools.h"
-#include "decayRates.h"
+#include "newDecayRate.h"
 
 #include "TTree.h"
 #include "TFile.h"

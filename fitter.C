@@ -15,7 +15,7 @@ using namespace std;
 bool fitter::RunFitter(TString filename)  {
   
     if (!Configure(filename)) return false;
-	if (!DoFit(1)) return false;
+	if (!DoFit(1,true,false)) return false;//arguments: strategy, useHesse, useMinos
     if (!DoProjection()) return false;
     return true;
   
@@ -465,40 +465,86 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
     fitter->mnexcm("MIGRAD", arglist ,2, ierflg);
     fitter->mnstat(fmin, fedm, errdef, npari, nparx, istat);  
   }
-  cout << "MIGRAD status = " << istat << endl;  
+  cout << "MIGRAD status = " << istat << endl;
+  int migradstat = istat;
 
   if (istat!=3){
     cout << "Fit failed after 3 attempts" << endl;
     return false;
   }
 
+  int hessestat = -999;
   if(useHesse){          
     fitter->mnexcm("HESSE", arglist ,2, ierflg);     
     fitter->mnstat(fmin, fedm, errdef, npari, nparx, istat);    
     cout << "HESSE status = " << istat << endl;
-  }                      
-  if (istat!=3){           
-    cout << "Hesse failed" << endl;     
-    return false;
+	hessestat = istat;
+	if (istat!=3)
+	  cout << "!!! -- HESSE FAILED -- !!!" << endl;
   }                                                           
   
+  int minosstat = -999;
   if(useMinos){                                     
     fitter->mnexcm("MINOS", arglist ,2, ierflg);          
     fitter->mnstat(fmin, fedm, errdef, npari, nparx, istat);           
-    cout << "MINOS status = " << istat << endl;        
-  }                                 
-
-  if (istat!=3){  
-    cout << "Minos failed" << endl;       
-    return false;
-  }                                        
-  _ndf -= fitter->GetNumFreePars();           
+    cout << "MINOS status = " << istat << endl;
+	minosstat = istat;
+	if (istat!=3)
+	  cout << "!!! -- MINOS FAILED -- !!!" << endl;
+  }
+  
+  const int freePars = fitter->GetNumFreePars();
+  _ndf -= freePars;
+  
+  cout << endl;
   cout << "chi2/ndf = " << _chi2 << "/" << _ndf;           
-  cout << ", prob = " << TMath::Prob(_chi2,_ndf) << endl; 
-
+  cout << ", prob = " << TMath::Prob(_chi2,_ndf) << endl;
   cout << "----------------------------------------------------------" << endl;
   cout << " Fit results give BR(Bs->Ds): " <<  decFitDs->Eval_BR() << ", BR(Bs->Ds*):" << decFitDsS->Eval_BR() << endl;
-
+  
+  // expand covariance matrix to account for fixed parameters
+  double cov_p[fitPars.size()][fitPars.size()];
+  double matrix[fitPars.size()][fitPars.size()];
+  fitter->mnemat(&matrix[0][0],fitPars.size());
+  for (unsigned int i=0; i<fitPars.size(); ++i) {
+	int ioff{0};
+	for(unsigned int k=0; k<i; ++k)
+	  if (fitPars[k].error==0.) ioff++;
+	for (unsigned int j=0; j<fitPars.size(); ++j) {
+	  if (fitPars[i].error==0. || fitPars[j].error==0.) {
+		cov_p[i][j] = 0.;
+		continue;
+	  }
+	  int joff{0};
+	  for(unsigned int k=0; k<j; ++k)
+		if (fitPars[k].error==0.) joff++;
+	  cov_p[i][j] = matrix[i-ioff][j-joff];
+	}
+  }
+  
+  //print out results:
+  FFModel FFModelFitDs  =  decFitDs->GetFFModel();
+  FFModel FFModelFitDsS =  decFitDsS->GetFFModel();
+  ofstream fresult("results_fit_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".txt");
+  fresult << " Fit results " << endl;
+  fresult << "----------------------------------------------------------" << endl;
+  fresult << " MIGRAD status = " << migradstat << endl;
+  fresult << " HESSE  status = " << hessestat << endl;
+  fresult << " MINOS  status = " << minosstat << endl;
+  fresult << "----------------------------------------------------------" << endl;
+  for(auto p : fitPars)
+	fresult << p.inum << "\t" << p.name << "\t\t" << p.value << "\t+-\t" << sqrt(cov_p[p.inum][p.inum]) << endl;
+  fresult << "----------------------------------------------------------" << endl;
+  fresult << " chi2/ndf = " << _chi2 << "/" << _ndf;
+  fresult << ", prob = " << TMath::Prob(_chi2,_ndf) << endl;
+  fresult << "----------------------------------------------------------" << endl;
+  fresult << " Covariance matrix elements: " << endl;
+  for(unsigned int i = 0; i<fitPars.size(); ++i){
+	for(unsigned int j = 0; j<=i; ++j)
+	  fresult << i << "\t " << j << "\t " << cov_p[i][j] << endl;
+  }
+  fresult.close();
+  
   return true;
 
 }
@@ -593,34 +639,21 @@ double FFfunctions(TString xname, double w, double werr) {
 	  f->Delete();
 	}
 	else{
-	  double hw{0}, R1w{0}, R2w{0};
+	  double V{0}, A1{0}, A2{0};
 	  FFModel ffmodel = decFitDsS->GetFFModel();
-	  if     (ffmodel.model == "CLN") decayRates::FFfunctionsCLN(w, ffmodel.FFpars, hw, R1w, R2w);
+	  if     (ffmodel.model == "CLN")  {
+		double hw{0}, R1w{0}, R2w{0};
+		decayRates::FFfunctionsCLN(w, ffmodel.FFpars, hw, R1w, R2w);
+		double r = mDsS/mB;
+		double R = 2.*sqrt(r)/(1.+r);
+		A1 = hw/2.*(w+1.)*R;
+		A2 = R2w*hw/R;
+		V  = R1w*hw/R;
+	  }
 	  else if(ffmodel.model == "BGL"){
-		double wp = 0;
-		//if(xname.Contains("a2") && w==1) wp = 0.001;
-		decayRates::FFfunctionsBGL(w+wp, ffmodel.FFpars, hw, R1w, R2w);
+		decayRates::FFfunctionsBGL(w, ffmodel.FFpars, A1, A2, V);
 	  }
 	  else { cout << "Wrong FF model for decFitDs in FFfunctions!"; return 1e20; }
-	
-	  /*
-	  double fw = hw * sqrt(mB*mDsS)*(w+1.);
-	  double gw = R1w*fw/(w+1)/mB/mDsS;
-	  double q2 = mB*mB + mDsS*mDsS - 2*w*mB*mDsS;
-	  double lambda = pow(mB,4) + pow(mDsS,4) + pow(q2,2) - 2.0*(mB*mB*mDsS*mDsS + mB*mB*q2 + mDsS*mDsS*q2);
-	  double r = mDsS/mB;
-	  double F1w = ( (w-r)/(w-1)-R2w ) * mB*(w-1)*fw;
-	
-	  double V = (mB+mDsS)/2.0*gw;
-	  double A1 = 1/(mB+mDsS)*fw;
-	  double A2 = (mB+mDsS)/lambda*( (mB*mB-mDsS*mDsS-q2)*fw - 2.0*mDsS*F1w );
-	   */
-	  
-	  double r = mDsS/mB;
-	  double R = 2.*sqrt(r)/(1.+r);
-	  double A1 = hw/2.*(w+1.)*R;
-	  double V  = R1w*hw/R;
-	  double A2 = R2w*hw/R;
 	
 	  if     (xname.Contains("v")) { FFvalue = V;  if(FFvalue!=FFvalue) { cout << " w = " << w << ", V  = " <<  V  << endl;} }
 	  else if(xname.Contains("a1")){ FFvalue = A1; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A1 = " <<  A1 << endl;} }
@@ -631,7 +664,6 @@ double FFfunctions(TString xname, double w, double werr) {
 	  }
 	}
   }
-  
   
   return FFvalue;
 }
@@ -720,9 +752,6 @@ void SetAllPars() {
             fitPars[i].inum = i; }
     }
 }
-
-
-
 
 void calculateYields() {
 
@@ -909,7 +938,7 @@ bool fitter::DoProjection() {
   grfplusFit->SetLineWidth(2);
   grfplusFit->SetLineColor(9);
   for(int p=0;p<1000;++p){
-	double w = 1.0000001 + 1.4/1000*p;
+	double w = 1. + 1.4/1000*p;
 	grfplusFit->SetPoint(p,w,FFfunctions("f",w,0));
   }
   TCanvas* cf = new TCanvas("cf","cf",800,800);
@@ -1030,7 +1059,7 @@ bool fitter::DoProjection() {
 	grDstFit[i]->SetLineColor(9);
   }
   for(int p=0;p<1000;++p){
-	double w = 1.0000001 + 1.2/1000*p;
+	double w = 1. + 1.2/1000*p;
 	grDstFit[0]->SetPoint(p,w,FFfunctions("v" ,w,0));
 	grDstFit[1]->SetPoint(p,w,FFfunctions("a1",w,0));
 	grDstFit[2]->SetPoint(p,w,FFfunctions("a2",w,0));
