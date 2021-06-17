@@ -13,6 +13,10 @@
 #include "TLine.h"
 #include "TLegend.h"
 #include "TMatrixD.h"
+#include "TGraphErrors.h"
+#include "TVectorD.h"
+#include "TMatrixD.h"
+#include "TDecompChol.h"
 
 class MCcand{
  public:
@@ -97,9 +101,12 @@ std::vector<TString> theoryInputs;
 
 double _Bmass{Mass::Bs}, _Dsmass{Mass::Ds}, _DsSmass{Mass::DsS};
 double _chi2, _ndf;
+int _np, _nfp;
 TH1D * hData;
 TH1D* hacc[2];
 std::map<TString,extInputs> _extInputs;
+vector<vector<double> > fitCovMatrix(100,vector<double>(100));                                   
+
 
 bool _rate1D = false;
 
@@ -122,7 +129,7 @@ class fitter
   bool SetDataAndBkg();
   bool SetExtInputs();
   void DrawResiduals(TH1D* hD, TH1D* hF, TH1D* hp);
-
+  void DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr);
  public: 
   bool RunFitter(TString filename);
     
