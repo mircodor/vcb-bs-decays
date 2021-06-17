@@ -14,7 +14,7 @@ The fit can be performed using the CLN parameterisation or the BGL parameterisat
 
 ## Running the code
 The code has been test with `ROOT 6.22.06`. In order to run the code this version of `ROOT` must be used (earlier versions might work too).
-The first thing to be done is to generate the signal templates that will be used inside the fit. This is done issuing the following command: `root -l runGeneration.C`. This command executes a function (`generateSignalTemplates`) that generates the signal templates. This function takes four argoments that can be customised:
+The first thing to be done is to generate the signal templates that will be used inside the fit. This is done issuing the following command: `root -l runGeneration.C`. This command executes a function (`generateSignalTemplates`) that generates the signal templates. This function takes four arguments that can be customised:
 * `filename`: a string specifying the configuration file that needs to be read by the script. This configuration file contains the form-factor parameters used during the generation of the signal templates;
 * `nentries`: the number of events that will be generated for Ds and Ds* decays.
 * `rateDS_4D`: set this to `true` if you want to generate the signal template for Ds* using the 4-dimensional decay rate (q2 and three helicity angles). If you set this value to `false`, the 1-dimensional decay rate will be used instead. **N.B:** the 4-dimensional generation may take a long time.
@@ -23,10 +23,10 @@ The first thing to be done is to generate the signal templates that will be used
 The acceptance due to the LHCb detector and selection will be automatically taken into account and applied after the data have been generated.
 
 A file called `file_templates.root` that contains the signal templates for Ds and Ds* with 500k events is already added to the repository.
-After the signal templates have been generated, one can lauch the fit via the command `root -l RunFit.C`. This macro has just one argument, `configFile`, that specify which configuration file needs to be used for the fit.
+After the signal templates have been generated, one can lauch the fit via the command `root -l RunFit.C`. This macro has just one argument, `configFile`, that specifies which configuration file needs to be used for the fit.
 
 ## Configuration files
-The configuration files are contained in the directory `config/` and have the follwing structure (taking as example the CLN parameterisation):
+The configuration files are contained in the directory `config/` and have the following structure (taking as example the CLN parameterisation):
 
 ```
 Templates file_templates.root templTree 
@@ -74,17 +74,17 @@ NrefD NrefDst -0.703
 Theory-Inputs 5 HPQCD LCSRDsS LCSRDs LHCb-PAPER-2019-046 MILC
 
 ```
-The first line (`Templates`) contains the name of the file containing the signal templates and of the `TTree` that needs to be read. It should not be necessary to change it. The lines containing `FF-Model-Ref-V` and `FF-Model-Ref-P` specify the model used during the generation of the signal templates (CLN in both cases) and the number of parameters of the model. These parameters are set to the values measured by the LHCb collaboration in Phys. Rev. D101 (2020) 072004. 
+The first line (`Templates`) is formed by the name of the file containing the signal templates and by the name of the `TTree` that needs to be read. It should not be necessary to change it. The lines containing `FF-Model-Ref-V` and `FF-Model-Ref-P` specify the model used during the generation of the signal templates (CLN in both cases) and the number of parameters of the model. These parameters are set to the values measured by the LHCb collaboration in [Phys. Rev. D101 (2020) 072004](https://inspirehep.net/literature?sort=mostrecent&size=25&page=1&q=find%20eprint%202001.03225). 
 
 
-The lines `FF-Model-Fit-P` and `FF-Model-Fit-V` are used to indicate the model used during the fit to the data (CLN or BGL) and the number of parameters. The parameters that will be used are indicated via the following syntax `parName     parValue  parError parLowLimit parUpperLimit  isGaussianConstrained`, which specify the parameter name, central value, uncertainty, lower and upper limits and if the parameter is Gaussian constrained in the fit (`1` if yes, `0` if not). 
+The lines `FF-Model-Fit-P` and `FF-Model-Fit-V` indicate the model used during the fit to the data (CLN or BGL) and the number of parameters. The parameters that will be used are indicated via the following syntax `parName     parValue  parError parLowLimit parUpperLimit  isGaussianConstrained`, which specifies the parameter name, central value, uncertainty, lower and upper limits and if the parameter is Gaussian constrained in the fit (`1` if yes, `0` if not). 
 
 
 The line `Other-Parameters` indicates the number of other parameters used in the fit.
 
-The line `Correlations` is followed by the a number that indicates the number of correlated parameters used in the fit (excluding the form factors parameters). The correlations are simply indicated using the name of both parameters followed by the value of the correlation coefficient.
+The line `Correlations` is followed by the a number that indicates the number of correlated parameters used in the fit (excluding the form-factor parameters). The correlations are simply indicated using the name of both parameters followed by the value of the correlation coefficient.
 
-The line `Theory-Inputs` contains the number and the names of the theory/experimental inputs that will be used in the fit. Available options are: `HPQCD_Ds`, `HPQCD_DsS`, `LCSRDs`, `LCSRDsS`, `LHCb-PAPER-2019-046` and `MILC`. The fit will automatically include this additional inputs and minimise the `chi2` simultaneously.
+The line `Theory-Inputs` contains the number and the names of the theory/experimental inputs that will be used in the fit. Available options are: `HPQCD_Ds`, `HPQCD_DsS`, `LCSRDs`, `LCSRDsS`, `LHCb-PAPER-2019-046` and `MILC`. The fit will automatically include these additional inputs and minimise the `chi2` simultaneously.
 
 
 
