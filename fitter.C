@@ -1141,8 +1141,8 @@ bool fitter::DoProjection() {
 	TH1D * hpull = (TH1D*)hData->Clone("hpull");
 	hpull->Reset();
     DrawResiduals(hData,hFit,hpull);
-    cperp->SaveAs("fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
-	cperp->SaveAs("fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
+    cperp->SaveAs("fit_projections/fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
+    cperp->SaveAs("fit_projections/fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   
   
   TString fmodels[]  ={"HPQCD_Ds","MILC","LCSRDs"};
@@ -1248,8 +1248,8 @@ bool fitter::DoProjection() {
   l2gf->Draw("SAME");
   l3gf->Draw("SAME");
 
-  cf->SaveAs("fit_projection_fplus_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
-  cf->SaveAs("fit_projection_fplus_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
+  cf->SaveAs("fit_projections/fit_projection_fplus_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
+  cf->SaveAs("fit_projections/fit_projection_fplus_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   
   
   
@@ -1419,8 +1419,8 @@ bool fitter::DoProjection() {
 	l2gf->Draw("SAME");
 	l3gf->Draw("SAME");
 
-	cVA[cp]->SaveAs("fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
-	cVA[cp]->SaveAs("fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
+	cVA[cp]->SaveAs("fit_projections/fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
+	cVA[cp]->SaveAs("fit_projections/fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   }
   
   
@@ -1503,8 +1503,8 @@ bool fitter::DoProjection() {
 
 
   
-  cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
-  cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
+  cw->SaveAs("fit_projections/fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
+  cw->SaveAs("fit_projections/fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   
   return true;
 	
