@@ -195,7 +195,7 @@ bool fitter::ReadConfigFile(TString filename){
         else {
           for(unsigned int i=0; i<nparConst; ++i){
              for(unsigned int j=0; j<nparConst; ++j){
-                 covParConst[i][j] = 1/covMatrixStat(i,j);
+                 covParConst[i][j] = 1./covMatrixStat(i,j);
             }
           }
      }
@@ -261,6 +261,7 @@ bool fitter::SetExtInputs(){
 	}
 	else { //for the LHCb input, the covariance matrix is directly provided
 	  //and we need to take into account bin widths (xerr)
+	  _normHistLHCb=0;
 	  TString n;
 	  double x, y, xerr, err;
 	  int i = 0;
@@ -274,6 +275,7 @@ bool fitter::SetExtInputs(){
 		_extInputs[model].x_err.push_back(xerr);
 		_extInputs[model].val.push_back(y);
 		_extInputs[model].val_err.push_back(err);
+		_normHistLHCb+=y;
 		i++;
 	  }
 	  _extInputs[model].dim = i;
@@ -486,40 +488,39 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
   int minosstat = -999;
   if(useMinos){                                     
     fitter->mnexcm("MINOS", arglist ,2, ierflg);          
-    fitter->mnstat(fmin, fedm, errdef, npari, nparx, istat);           
+    fitter->mnstat(fmin, fedm, errdef, npari, nparx, istat);
     cout << "MINOS status = " << istat << endl;
 	minosstat = istat;
 	if (istat!=3)
 	  cout << "!!! -- MINOS FAILED -- !!!" << endl;
   }
   
-  const int freePars = fitter->GetNumFreePars();
-  _ndf -= freePars;
+  int npf = fitter->GetNumFreePars();
+  _ndf -= npf;
   
-  cout << endl;
-  cout << "chi2/ndf = " << _chi2 << "/" << _ndf;           
+  cout << "chi2/ndf = " << _chi2 << "/" << _ndf;
   cout << ", prob = " << TMath::Prob(_chi2,_ndf) << endl;
   cout << "----------------------------------------------------------" << endl;
   cout << " Fit results give BR(Bs->Ds): " <<  decFitDs->Eval_BR() << ", BR(Bs->Ds*):" << decFitDsS->Eval_BR() << endl;
   
   // expand covariance matrix to account for fixed parameters
-  double cov_p[fitPars.size()][fitPars.size()];
-  double matrix[fitPars.size()][fitPars.size()];
-  fitter->mnemat(&matrix[0][0],fitPars.size());
+  double fitMatrix[fitPars.size()][fitPars.size()];
+  fitter->mnemat(&fitMatrix[0][0],fitPars.size());
+    
   for (unsigned int i=0; i<fitPars.size(); ++i) {
-	int ioff{0};
-	for(unsigned int k=0; k<i; ++k)
-	  if (fitPars[k].error==0.) ioff++;
-	for (unsigned int j=0; j<fitPars.size(); ++j) {
-	  if (fitPars[i].error==0. || fitPars[j].error==0.) {
-		cov_p[i][j] = 0.;
-		continue;
-	  }
-	  int joff{0};
-	  for(unsigned int k=0; k<j; ++k)
-		if (fitPars[k].error==0.) joff++;
-	  cov_p[i][j] = matrix[i-ioff][j-joff];
-	}
+    int ioff(0);                                                                          
+    for(unsigned int k=0; k<i; ++k)                                                       
+      if (fitPars[k].error==0.) ioff++;                                                       
+    for (unsigned int j=0; j<fitPars.size(); ++j) {                                                
+      if (fitPars[i].error==0. || fitPars[j].error==0.) {                                         
+        fitFullMatrix[i][j] = 0.;
+        continue;                                                                         
+      }                                                                                   
+      int joff(0);                                                                        
+      for(unsigned int k=0; k<j; ++k)                                                     
+        if (fitPars[k].error==0.) joff++;
+		fitFullMatrix[i][j] = fitMatrix[i-ioff][j-joff];
+    }
   }
   
   //print out results:
@@ -529,11 +530,11 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
   fresult << " Fit results " << endl;
   fresult << "----------------------------------------------------------" << endl;
   fresult << " MIGRAD status = " << migradstat << endl;
-  fresult << " HESSE  status = " << hessestat << endl;
-  fresult << " MINOS  status = " << minosstat << endl;
+  fresult << " HESSE  status = "; if(useHesse) fresult << hessestat << endl; else fresult << "not used" << endl;
+  fresult << " MINOS  status = "; if(useMinos) fresult << minosstat << endl; else fresult << "not used" << endl;
   fresult << "----------------------------------------------------------" << endl;
   for(auto p : fitPars)
-	fresult << p.inum << "\t" << p.name << "\t\t" << p.value << "\t+-\t" << sqrt(cov_p[p.inum][p.inum]) << endl;
+	fresult << p.inum << "\t" << p.name << "\t\t" << p.value << "\t+-\t" << sqrt(fitFullMatrix[p.inum][p.inum]) << endl;
   fresult << "----------------------------------------------------------" << endl;
   fresult << " chi2/ndf = " << _chi2 << "/" << _ndf;
   fresult << ", prob = " << TMath::Prob(_chi2,_ndf) << endl;
@@ -541,7 +542,7 @@ bool fitter::DoFit(double strategy, bool useHesse, bool useMinos) {
   fresult << " Covariance matrix elements: " << endl;
   for(unsigned int i = 0; i<fitPars.size(); ++i){
 	for(unsigned int j = 0; j<=i; ++j)
-	  fresult << i << "\t " << j << "\t " << cov_p[i][j] << endl;
+	  fresult << i << "\t " << j << "\t " << fitFullMatrix[i][j] << endl;
   }
   fresult.close();
   
@@ -614,6 +615,279 @@ void fcn_tot(int &, double *, double &f, double *p, int ) {
   
 }
 
+void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
+
+  TColor * col = new TColor(); 
+  //Color_t c1 = col->GetColor(227,74,51);                                                                                  
+  //Color_t c2 = col->GetColor(253,187,132);      
+  //Color_t c3 = col->GetColor(254,232,200);      
+  Color_t c1 = col->GetColor(49,163,84);     
+  Color_t c2 = col->GetColor(161,217,155);      
+  Color_t c3 = col->GetColor(229,245,224);      
+
+
+  double FFvalue = 0;
+  double w = 0;
+  FFModel ffmodelDs =  decFitDs->GetFFModel();
+  FFModel ffmodelDsS =  decFitDsS->GetFFModel();
+  //quantiles of gaussian
+  const int dim = 6;
+  double quantiles[dim];
+  double sum[dim] = {0.15865, 1-0.15865, 0.0227, 1-0.0227, 0.0015, 1-0.0015};
+  //TGraphErrors
+  gr.resize(3);
+  for(int i = 0; i < 3; i++) gr[i] = new TGraphErrors();
+
+  vector<parameter> allPars;
+  for(auto p : fitPars) {
+    if(p.error == 0) continue;
+    allPars.push_back(p);
+  }
+
+  vector<parameter> newPars;
+  vector<parameter> tmpFFPars;
+  newPars = fitPars;
+  //for (auto p : allPars) p.print();
+  //get the fit covariance matrix only for free pars
+  TMatrixD cov(allPars.size(),allPars.size());
+  for (unsigned int i=0; i<fitPars.size(); ++i) {
+	int ioff(0);
+	for(unsigned int k=0; k<i; ++k)
+	  if (fitPars[k].error==0.) ioff++;
+	for (unsigned int j=0; j<fitPars.size(); ++j) {
+	  if (fitPars[i].error==0. || fitPars[j].error==0.)continue;
+	  int joff(0);
+	  for(unsigned int k=0; k<j; ++k)
+		if (fitPars[k].error==0.) joff++;
+	   cov(i-ioff,j-joff) = fitFullMatrix[i][j];
+	}
+  }
+  //cov.Print();
+  
+  if(xname.Contains("f")){
+    double Gw = 0;
+    double r =  _Dsmass/_Bmass;
+
+    //start the toys
+    int wPoints = 400;
+    for(int k = 0; k < wPoints; k++) { //w points
+      w = 1.0000001 + 1.33/wPoints*k;
+
+      TH1D * hg = new TH1D("hg","hg",10000,0,5);
+      
+      for(int i = 0; i < 1000; i++) { //nExtractions per point
+		tmpFFPars.clear();
+		TVectorD shift(allPars.size());
+		TDecompChol tdc(cov);
+		if ( !tdc.Decompose() ) {cout << "Something is wrong with decomposition!" << endl; return;}
+		TMatrixD u = tdc.GetU(); u.T();
+		TRandom3 ran(i+1);
+
+		for (long unsigned int m=0; m<allPars.size(); ++m) shift(m) = ran.Gaus();
+		shift = u*shift;
+		for (long unsigned int m=0; m<allPars.size(); ++m) {
+		  for (long unsigned int n=0; n<newPars.size(); ++n)
+			if(newPars[n].inum == allPars[m].inum) newPars[n].value = allPars[m].value + shift(m);
+		}
+		
+		for (long unsigned int m=0; m<newPars.size(); ++m)
+		  if(m < ffmodelDs.FFpars.size())  tmpFFPars.push_back(newPars[m]);
+	
+		if     (ffmodelDs.model == "CLN") decayRates::FFfunctionsCLN(w, tmpFFPars, Gw);
+		else if(ffmodelDs.model == "BGL") decayRates::FFfunctionsBGL(w, tmpFFPars, Gw);
+		else{ cout << "Wrong FF model for decFitDs in FFfunctions!"; return; }
+
+		FFvalue = (1+r)/2./sqrt(r)*Gw;
+		hg->Fill(FFvalue);
+      }
+
+      hg->GetQuantiles(dim,quantiles,sum);
+      gr[0]->SetPoint(k,w,hg->GetMean());
+      gr[0]->SetPointError(k,0,hg->GetMean()-quantiles[0]);
+      gr[1]->SetPoint(k,w,hg->GetMean());
+      gr[1]->SetPointError(k,0,hg->GetMean()-quantiles[2]);
+      gr[2]->SetPoint(k,w,hg->GetMean());
+      gr[2]->SetPointError(k,0,hg->GetMean()-quantiles[4]);
+      
+      hg->Delete();
+
+    }
+  }
+  else {
+    double mB = _Bmass; double mDsS = _DsSmass;
+    double wBins[] = {1.000, 1.1087, 1.1688, 1.2212, 1.2717, 1.3226, 1.3814, 1.4667}; 
+
+    //need new model to draw the bars, to avoid modifying the origianl one
+    decayRates * newModel = new decayRates(decFitDsS->GetFFModel(),true);
+    FFModel newFFModel;
+    newFFModel.model = ffmodelDsS.model;
+    newFFModel.initNFFpars(ffmodelDsS.FFpars.size());	
+    newModel->SetTauB(decFitDsS->GetTauB());                                 
+    newModel->SetVcbEff(decFitDsS->GetVcbEff());    
+    
+    if(xname.Contains("bin")){ 
+      double norm  = 1.;
+	  double Vcb   = 1.;
+	  double etaEW = 1.;
+      double wmin = 1.;
+      double wmax = (mB*mB + mDsS*mDsS) / (2.*mB*mDsS);
+      double w(0), werr(0);
+      for(long unsigned int k = 0; k < 7; k++) { //w points
+		w    = (wBins[k+1]+wBins[k])/2.;
+		werr = (wBins[k+1]-wBins[k])/2.;
+
+		TH1D * hg = new TH1D("hg","hg",10000,0,5);
+		for(int i = 0; i < 1000; i++) { //nExtractions per point
+	  
+		  tmpFFPars.clear();
+		  TVectorD shift(allPars.size());
+		  TDecompChol tdc(cov);
+		  if ( !tdc.Decompose() ) {cout << "Something is wrong with decomposition!" << endl; return;}
+		  TMatrixD u = tdc.GetU(); u.T();
+		  TRandom3 ran(i+1);
+	  
+		  for (long unsigned int m=0; m<allPars.size(); ++m) shift(m) = ran.Gaus();
+		  shift = u*shift;
+		  
+		  for (long unsigned int m=0; m<allPars.size(); ++m) {
+			for (long unsigned int n=0; n<newPars.size(); ++n)
+			  if(newPars[n].inum == allPars[m].inum) newPars[n].value = allPars[m].value + shift(m);
+		  }
+		  
+		  for (long unsigned int m=0; m<newPars.size(); ++m) {
+			if(newPars[m].name == "normLHCb") norm  = newPars[m].value;
+			else if(newPars[m].name == "Vcb") Vcb  = newPars[m].value;
+			else if(newPars[m].name == "etaEW") etaEW  = newPars[m].value;
+			//only the DsS FFs
+			if(m >= ffmodelDs.FFpars.size() && m < ffmodelDsS.FFpars.size()+ffmodelDs.FFpars.size())  {
+			  tmpFFPars.push_back(newPars[m]);
+			}
+		  }
+
+	  for(long unsigned int m = 0; m < tmpFFPars.size(); ++m) newFFModel.FFpars[m] = tmpFFPars[m];
+	  
+	  ///set extracted parameters in the new FF model
+	  newModel->SetFFModel(newFFModel);
+	  newModel->SetVcbEff(Vcb*etaEW);
+
+	  TF1 * f = new TF1("f",newModel,&decayRates::TF_dGdw, wmin, wmax, 0);
+	  double yFF = norm*f->Integral(w-werr,w+werr);
+	  double intTot = norm*f->Integral(wmin,wmax);
+	  FFvalue = yFF/intTot*_normHistLHCb;
+	  hg->Fill(FFvalue/(werr*2.0));
+	  f->Delete();
+	}
+
+	hg->GetQuantiles(dim,quantiles,sum);
+	gr[0]->SetPoint(k,w,hg->GetMean());
+	gr[0]->SetPointError(k,werr,hg->GetMean()-quantiles[0]);
+	gr[1]->SetPoint(k,w,hg->GetMean());
+	gr[1]->SetPointError(k,werr,hg->GetMean()-quantiles[2]);
+	gr[2]->SetPoint(k,w,hg->GetMean());
+	gr[2]->SetPointError(k,werr,hg->GetMean()-quantiles[4]);
+	
+	hg->Delete();
+      }
+    }
+    else {
+      double A1{0}, A2{0}, V{0};
+      
+      //start the toys
+      int wPoints = 400;
+      for(int k = 0; k < wPoints; k++) { //w points
+	w = 1.0000001 + 1.2/wPoints*k;
+	
+	TH1D * hg = new TH1D("hg","hg",10000,0,5);
+	
+	for(int i = 0; i < 1000; i++) { //nExtractions per point
+	  tmpFFPars.clear();
+	  TVectorD shift(allPars.size());
+	  TDecompChol tdc(cov);                                                                                                                        
+	  if ( !tdc.Decompose() ) {cout << "Something is wrong with decomposition!" << endl; return;}
+	  TMatrixD u = tdc.GetU(); u.T();                                                                                                              
+	  TRandom3 ran(i+1);                                                                                                                            
+	  
+	  for (long unsigned int m=0; m<allPars.size(); ++m) shift(m) = ran.Gaus();    
+	  shift = u*shift;
+	  
+	  for (long unsigned int m=0; m<allPars.size(); ++m) {
+		for (long unsigned int n=0; n<newPars.size(); ++n)
+		  if(newPars[n].inum == allPars[m].inum) newPars[n].value = allPars[m].value + shift(m);
+	  }
+
+	  for (long unsigned int m=0; m<newPars.size(); ++m) {
+	    if(m >= ffmodelDs.FFpars.size() && m < ffmodelDsS.FFpars.size()+ffmodelDs.FFpars.size())   tmpFFPars.push_back(newPars[m]);
+	  }
+
+	  if     (newFFModel.model == "CLN")  {
+		double hw{0}, R1w{0}, R2w{0};
+		decayRates::FFfunctionsCLN(w, tmpFFPars, hw, R1w, R2w);
+		double r = mDsS/mB;
+		double R = 2.*sqrt(r)/(1.+r);
+		A1 = hw/2.*(w+1.)*R;
+		A2 = R2w*hw/R;
+		V  = R1w*hw/R;
+	  }
+	  else if(newFFModel.model == "BGL"){
+		decayRates::FFfunctionsBGL(w, tmpFFPars, A1, A2, V);
+	  }
+	
+	  if     (xname.Contains("v")) { FFvalue = V;  if(FFvalue!=FFvalue) { cout << " w = " << w << ", V  = " <<  V  << endl;} }
+	  else if(xname.Contains("a1")){ FFvalue = A1; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A1 = " <<  A1 << endl;} }
+	  else if(xname.Contains("a2")){ FFvalue = A2; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A2 = " <<  A2 << endl;} }
+	  else{
+		cout << "Wrong name for x point for the external input in FFfunction!" << endl;
+		return;
+	  }
+	hg->Fill(FFvalue);
+      }
+
+      hg->GetQuantiles(dim,quantiles,sum);
+      gr[0]->SetPoint(k,w,hg->GetMean());
+      gr[0]->SetPointError(k,0,hg->GetMean()-quantiles[0]);
+      gr[1]->SetPoint(k,w,hg->GetMean());
+      gr[1]->SetPointError(k,0,hg->GetMean()-quantiles[2]);
+      gr[2]->SetPoint(k,w,hg->GetMean());
+      gr[2]->SetPointError(k,0,hg->GetMean()-quantiles[4]);
+      
+      hg->Delete();
+      
+      }
+    }
+  }
+  
+  gr[0]->SetLineColor(c1);
+  gr[0]->SetMarkerColor(c1);
+  gr[0]->SetFillColor(c1);
+  gr[0]->SetMarkerSize(0);
+  gr[1]->SetLineColor(c2);
+  gr[1]->SetLineColor(c2);
+  gr[1]->SetMarkerColor(c2);
+  gr[1]->SetFillColor(c2);
+  gr[1]->SetMarkerSize(0);
+  gr[2]->SetLineColor(c3);
+  gr[2]->SetMarkerColor(c3);
+  gr[2]->SetFillColor(c3);
+  gr[2]->SetMarkerSize(0);
+  
+  /*
+  gr[0]->SetLineColorAlpha(kOrange,0.2);
+  gr[0]->SetMarkerColorAlpha(kOrange,0.2);
+  gr[0]->SetFillColorAlpha(kOrange,0.2);
+  gr[0]->SetMarkerSize(0);
+  gr[1]->SetLineColorAlpha(kOrange,0.5);
+  gr[1]->SetMarkerColorAlpha(kOrange,0.5);
+  gr[1]->SetFillColorAlpha(kOrange,0.5);
+  gr[1]->SetMarkerSize(0);
+  gr[2]->SetLineColorAlpha(kOrange,0.8);
+  gr[2]->SetMarkerColorAlpha(kOrange,0.8);
+  gr[2]->SetFillColorAlpha(kOrange,0.8);
+  gr[2]->SetMarkerSize(0);
+  */
+  return;
+}
+
+
 double FFfunctions(TString xname, double w, double werr) {
   
   double FFvalue = 0;
@@ -635,7 +909,9 @@ double FFfunctions(TString xname, double w, double werr) {
 	  double wmin = 1.;
 	  double wmax = (mB*mB + mDsS*mDsS) / (2.*mB*mDsS);
 	  TF1 * f = new TF1("f",decFitDsS,&decayRates::TF_dGdw, wmin, wmax, 0);
-	  FFvalue = norm*f->Integral(w-werr,w+werr);
+	  double yFF = norm*f->Integral(w-werr,w+werr);
+	  double intTot = norm*f->Integral(wmin,wmax);
+	  FFvalue = yFF/intTot*_normHistLHCb;
 	  f->Delete();
 	}
 	else{
@@ -841,6 +1117,7 @@ bool fitter::DoProjection() {
 	FFModel FFModelFitDs  =  decFitDs->GetFFModel();
 	FFModel FFModelFitDsS =  decFitDsS->GetFFModel();
   
+
 	TCanvas* cperp = new TCanvas("cperp", "cperp", 800,800);
 	TPad* upperPad; TPad* lowerPad;
 	upperPad = new TPad("plot_perp", "plot_perp", .005, .2525, .995, .995);
@@ -885,9 +1162,9 @@ bool fitter::DoProjection() {
     hData->Draw("PESAME");
   
 	TLegend * leg;
-	leg = new TLegend(0.250,0.75,0.35,0.9);
+	leg = new TLegend(0.22,0.75,0.45,0.9);
 	leg->SetFillStyle(0);
-	leg->SetTextSize(0.040);
+	leg->SetTextSize(0.045);
 	leg->SetBorderSize(0);
 	leg->SetTextFont(132);
 	leg->AddEntry(hData,"LHCb, PRD101 (2020) 072004","lpe");
@@ -904,7 +1181,7 @@ bool fitter::DoProjection() {
   
   TString fmodels[]  ={"HPQCD_Ds","MILC","LCSRDs"};
   const int Nfmodels = sizeof(fmodels)/sizeof(fmodels[0]);
-  int fcolor[]={1,2,36};
+  int fcolor[]={1,2,13};
   int marker[]={21,22,23};
   TGraphErrors* grfplus[Nfmodels];
   TGraphErrors* grfpluspull[Nfmodels];
@@ -913,7 +1190,7 @@ bool fitter::DoProjection() {
 	grfplus[im]->SetMarkerColor(fcolor[im]);
 	grfplus[im]->SetLineColor(fcolor[im]);
 	grfplus[im]->SetMarkerStyle(marker[im]);
-	grfplus[im]->SetMarkerSize(0.8);
+	grfplus[im]->SetMarkerSize(1.1);
 	grfpluspull[im] = new TGraphErrors();
 	grfpluspull[im]->SetMarkerColor(fcolor[im]);
 	grfpluspull[im]->SetLineColor(fcolor[im]);
@@ -938,7 +1215,7 @@ bool fitter::DoProjection() {
   grfplusFit->SetLineWidth(2);
   grfplusFit->SetLineColor(9);
   for(int p=0;p<1000;++p){
-	double w = 1. + 1.4/1000*p;
+	double w = 1.0 + 1.33/1000*p;
 	grfplusFit->SetPoint(p,w,FFfunctions("f",w,0));
   }
   TCanvas* cf = new TCanvas("cf","cf",800,800);
@@ -956,29 +1233,35 @@ bool fitter::DoProjection() {
   upperPadcf->cd();                                                                       
 
   TMultiGraph* gf = new TMultiGraph();
-  gf->Add(grfplusFit,"l");
+  std::vector<TGraphErrors*> gfCL;
+  DrawFFErrorBand("f",gfCL);
+  gf->Add(gfCL[2],"p");
+  gf->Add(gfCL[1],"p");
+  gf->Add(gfCL[0],"p");
+  //gf->Add(grfplusFit,"l");
   for(int im=0; im<Nfmodels; ++im) gf->Add(grfplus[im],"p");
-  gf->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
-  gf->GetHistogram()->GetYaxis()->SetRangeUser(0,1.8);
+  gf->GetXaxis()->SetLimits(0.9,2.4);
+  gf->SetMinimum(0);
+  gf->SetMaximum(1.8);
   gf->GetYaxis()->SetTitle("#it{f}_{+}(#it{w})");
   gf->GetXaxis()->SetTitle("#it{w}");
   gf->Draw("a");
   TLegend * legf;
-  legf = new TLegend(0.3,0.75,0.5,0.95);
+  legf = new TLegend(0.39,0.75,0.59,0.95);
   legf->SetFillStyle(0);
-  legf->SetTextSize(0.040);
+  legf->SetTextSize(0.045);
   legf->SetBorderSize(0);
   legf->SetTextFont(132);
   TString fmodelsName[]  ={"HPQCD, PRD101 (2020) 7, 074513","MILC, PRD85 (2012) 114502","LCSR, EPJC80 (2020) 4, 347"};
   for(int im=0; im<Nfmodels; ++im) legf->AddEntry(grfplus[im],fmodelsName[im],"pe");
-  legf->AddEntry(grfplusFit,"Fit","l");
+  //legf->AddEntry(grfplusFit,"Fit","l");
   legf->Draw("SAME");
 
 
   lowerPadcf->cd();                                                                       
   TMultiGraph* gfpull = new TMultiGraph();
   for(int im=0; im<Nfmodels; ++im) gfpull->Add(grfpluspull[im],"p"); 
-  gfpull->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
+  gfpull->GetXaxis()->SetLimits(0.9,2.4);
   gfpull->GetHistogram()->GetYaxis()->SetNdivisions(505);
   gfpull->GetHistogram()->GetYaxis()->SetLabelSize(0.13);
   gfpull->GetHistogram()->GetYaxis()->SetRangeUser(-5,5);
@@ -987,7 +1270,7 @@ bool fitter::DoProjection() {
   gfpull->GetHistogram()->GetYaxis()->SetTitleSize(0.15);
   gfpull->GetHistogram()->GetYaxis()->SetTitleOffset(0.4);
   gfpull->GetHistogram()->GetXaxis()->SetTitleSize(0);
-  
+
   TLine * l1gf = new TLine(gfpull->GetHistogram()->GetXaxis()->GetXmin(),-3,gfpull->GetHistogram()->GetXaxis()->GetXmax(),-3);
   TLine * l2gf = new TLine(gfpull->GetHistogram()->GetXaxis()->GetXmin(),+3,gfpull->GetHistogram()->GetXaxis()->GetXmax(),+3);
   TLine * l3gf = new TLine(gfpull->GetHistogram()->GetXaxis()->GetXmin(),0,gfpull->GetHistogram()->GetXaxis()->GetXmax(),0);
@@ -1006,7 +1289,7 @@ bool fitter::DoProjection() {
   
   TString VAmodels[] ={"HPQCD_DsS","LCSRDsS"};
   const int NVAmodels = sizeof(VAmodels)/sizeof(VAmodels[0]);
-  int colorsVA[]={1,36};
+  int colorsVA[]={1,13};
   int markersVA[]={21,23};
   TGraphErrors* grDst[3][NVAmodels];
   TGraphErrors* grDstpull[3][NVAmodels];
@@ -1017,7 +1300,7 @@ bool fitter::DoProjection() {
 	  grDst[i][im]->SetMarkerColor(colorsVA[im]);
 	  grDst[i][im]->SetLineColor(colorsVA[im]);
 	  grDst[i][im]->SetMarkerStyle(markersVA[im]);
-	  grDst[i][im]->SetMarkerSize(0.8);
+	  grDst[i][im]->SetMarkerSize(1.1);
 	  grDstpull[i][im] = new TGraphErrors();
 	  grDstpull[i][im]->SetLineWidth(2);
 	  grDstpull[i][im]->SetMarkerColor(colorsVA[im]);
@@ -1070,7 +1353,7 @@ bool fitter::DoProjection() {
   grDstHPQCD->SetMarkerColor(4);
   grDstHPQCD->SetLineColor(4);
   grDstHPQCD->SetMarkerStyle(20);
-  grDstHPQCD->SetMarkerSize(0.8);
+  grDstHPQCD->SetMarkerSize(1.1);
   TGraphErrors* grDstHPQCDpull = new TGraphErrors();
   grDstHPQCDpull->SetLineWidth(2);
   grDstHPQCDpull->SetMarkerColor(4);
@@ -1093,7 +1376,8 @@ bool fitter::DoProjection() {
   TLegend * legVA[3];
   TString funcname[]={"V","A1","A2"};
   for(int cp=0;cp<3;++cp){
-	cVA[cp] = new TCanvas(Form("c_%i",cp),Form("c_%i",cp),800,800);
+        std::vector<TGraphErrors*> gVACL;
+        cVA[cp] = new TCanvas(Form("c_%i",cp),Form("c_%i",cp),800,800);
 	//cVA[cp]->SetLeftMargin(0.2);
 	//cVA[cp]->SetRightMargin(0.1);
 	upperPadVA[cp] = new TPad(Form("upperPad_%i",cp), Form("upperPad_%i",cp),   .005, .2525, .995, .995);   
@@ -1107,7 +1391,18 @@ bool fitter::DoProjection() {
 	upperPadVA[cp]->cd();
 	gVA[cp] = new TMultiGraph();
 	gVApull[cp] = new TMultiGraph();
-	gVA[cp]->Add(grDstFit[cp],"l");
+	
+	if(funcname[cp] == "V")
+	  DrawFFErrorBand("v",gVACL); 
+	if(funcname[cp] == "A1")
+	  DrawFFErrorBand("a1",gVACL);
+	if(funcname[cp] == "A2")
+	  DrawFFErrorBand("a2",gVACL); 
+
+	gVA[cp]->Add(gVACL[2],"p");
+	gVA[cp]->Add(gVACL[1],"p");
+	gVA[cp]->Add(gVACL[0],"p");
+	//gVA[cp]->Add(grDstFit[cp],"l");
 	for(int m=0; m<NVAmodels; m++) {
 	  gVA[cp]->Add(grDst[cp][m],"p");
 	  gVApull[cp]->Add(grDstpull[cp][m],"p");	
@@ -1116,28 +1411,28 @@ bool fitter::DoProjection() {
 	  gVA[cp]->Add(grDstHPQCD,"p");
 	  gVApull[cp]->Add(grDstHPQCDpull,"p");
 	}
-	gVA[cp]->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
+	gVA[cp]->GetXaxis()->SetLimits(0.9,2.3);
 	gVA[cp]->GetHistogram()->GetYaxis()->SetRangeUser(0,1.5);
-	gVApull[cp]->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
+	gVApull[cp]->GetXaxis()->SetLimits(0.9,2.3);
 	gVApull[cp]->GetHistogram()->GetYaxis()->SetRangeUser(-5,5);
 	if(cp==0) gVA[cp]->GetHistogram()->GetYaxis()->SetRangeUser(0,2.1);
 	gVA[cp]->GetYaxis()->SetTitle(titley[cp]);
 	gVA[cp]->GetXaxis()->SetTitle("#it{w}");
 	gVA[cp]->Draw("a");
-	legVA[cp] = new TLegend(0.35,0.75,0.55,0.95);
+	legVA[cp] = new TLegend(0.45,0.75,0.65,0.95);
 	legVA[cp]->SetFillStyle(0);
-	legVA[cp]->SetTextSize(0.040);
+	legVA[cp]->SetTextSize(0.045);
 	legVA[cp]->SetBorderSize(0);
 	legVA[cp]->SetTextFont(132);
 	if(cp==0) gVA[cp]->GetHistogram()->GetYaxis()->SetRangeUser(0,2.1);
 	if(cp==1) legVA[cp]->AddEntry(grDstHPQCD,"HPQCD, PRD99 (2019) 114512","pe");
 	legVA[cp]->AddEntry(grDst[cp][0],"HPQCD, arXiv:2105.11433","pe");
 	legVA[cp]->AddEntry(grDst[cp][1],"LCSR, EPJC80 (2020) 4, 347","pe");
-	legVA[cp]->AddEntry(grDstFit[cp],"Fit","l");
+	//legVA[cp]->AddEntry(grDstFit[cp],"Fit","l");
 	legVA[cp]->Draw("SAME");
 	
 	lowerPadVA[cp]->cd();
-	gVApull[cp]->GetHistogram()->GetXaxis()->SetRangeUser(0.9,2.5);
+	gVApull[cp]->GetXaxis()->SetLimits(0.9,2.3);
 	gVApull[cp]->GetHistogram()->GetYaxis()->SetNdivisions(505);
 	gVApull[cp]->GetHistogram()->GetYaxis()->SetLabelSize(0.13);
 	gVApull[cp]->GetHistogram()->GetYaxis()->SetRangeUser(-5,5);
@@ -1197,30 +1492,50 @@ bool fitter::DoProjection() {
   hw->SetMarkerStyle(20);
   hw->SetMarkerColor(kBlack);
   hw->SetLineColor(kBlack);
-  hw->SetMarkerSize(0.8);
+  hw->SetMarkerSize(1.1);
   hw->GetYaxis()->SetRangeUser(0.5,3.5);
   hw->GetYaxis()->SetTitle("(1/#it{N})(d#it{N}/d#it{w})");
   hw->GetXaxis()->SetTitle("#it{w}");
-  hw->Draw("PE");
+
+  std::vector<TGraphErrors*> gwbin;
+  DrawFFErrorBand("bin",gwbin);
+  TMultiGraph* gw = new TMultiGraph();
+
+  gw->Add(gwbin[2],"p2][");
+  gw->Add(gwbin[1],"p2][");
+  gw->Add(gwbin[0],"p2][");
+  gw->GetHistogram()->GetYaxis()->SetRangeUser(0,4);
+  gw->GetXaxis()->SetLimits(1.0,1.4667);
+  gw->Draw("a][");
+  //hw->Draw("PESAME");
+  //gwbin[2]->Draw("SAMEP2");
+  //gwbin[1]->Draw("SAMEP2");
+  //gwbin[0]->Draw("SAMEP2");
+  hw->Draw("PESAME");
   hwFit->SetLineWidth(2);
   hwFit->SetLineColor(9);
-  hwFit->Draw("HISTSAME][");
+  //hwFit->Draw("HISTSAME][");
   hw->Draw("PESAME");
   
   TLegend * legw;
-  legw = new TLegend(0.25,0.75,0.50,0.90);
+  legw = new TLegend(0.23,0.75,0.48,0.90);
   legw->SetFillStyle(0);
-  legw->SetTextSize(0.040);
+  legw->SetTextSize(0.045);
   legw->SetBorderSize(0);
   legw->SetTextFont(132);
   legw->AddEntry(hw,"LHCb, JHEP12 (2020) 144","lpe");
-  legw->AddEntry(hwFit,"Fit","l");
+  //legw->AddEntry(hwFit,"Fit","l");
   legw->Draw("SAME");
+
+  gPad->RedrawAxis(); 
+  
   
   lowerPadw->cd();
   TH1D * hpullw = (TH1D*) hw->Clone("hpullw");
   hpullw->Reset();
   DrawResiduals(hw,hwFit,hpullw);
+
+
   
   cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
   cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
