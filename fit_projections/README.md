@@ -1,0 +1,1 @@
+Directory that contains the fit projections from the fit.
