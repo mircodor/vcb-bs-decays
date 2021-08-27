@@ -47,6 +47,7 @@ bool fitter::Configure(TString filename) {
     
 }
 
+
 bool fitter::SetDataAndBkg(){
        
     TFile * fileData = TFile::Open("LHCb_input_data_mc.root");
@@ -221,7 +222,7 @@ bool fitter::SetExtInputs(){
 	  TString n;
 	  double x, y, err;
 	  int i = 0;
-	  ifstream ftmp("inputs/"+model+"_values.txt");
+	  ifstream ftmp(dirInputs+model+"_values.txt");
 	  if(!ftmp.is_open()){
 		cout << model << " input file not found!" << endl; return false;
 	  }
@@ -240,20 +241,26 @@ bool fitter::SetExtInputs(){
 	  
 	  //read correlation
 	  double c;
-	  ifstream ftmpc("inputs/"+model+"_corr.txt");
+	  ifstream ftmpc(dirInputs+model+"_corr.txt");
 	  while(ftmpc >> n >> c) {
 		_extInputs[model].corr[n] = c;
 	  }
 	  
 	  //build covariance and its inverse
 	  for(int i = 0; i < _extInputs[model].dim; i++) {
-		for(int j = 0; j < _extInputs[model].dim; j++) {
-		  double rho = _extInputs[model].corr[Form("%s_%s",_extInputs[model].name[i].Data(),_extInputs[model].name[j].Data())];
-		  if(rho == 0) rho = _extInputs[model].corr[Form("%s_%s",_extInputs[model].name[j].Data(),_extInputs[model].name[i].Data())];
+		for(int j = 0; j <=i; j++) {
+		  double rho = 0;
 		  if(i == j) rho = 1;
+		  else {
+			if(_extInputs[model].corr.find(Form("%s_%s",_extInputs[model].name[i].Data(),_extInputs[model].name[j].Data()))!=_extInputs[model].corr.end())
+			  rho = _extInputs[model].corr[Form("%s_%s",_extInputs[model].name[i].Data(),_extInputs[model].name[j].Data())];
+			else if (_extInputs[model].corr.find(Form("%s_%s",_extInputs[model].name[j].Data(),_extInputs[model].name[i].Data()))!=_extInputs[model].corr.end())
+			  rho = _extInputs[model].corr[Form("%s_%s",_extInputs[model].name[j].Data(),_extInputs[model].name[i].Data())];
+			//if(_extInputs[model].name[j].Contains("fzero") || _extInputs[model].name[j].Contains("a0") ||
+			//   _extInputs[model].name[i].Contains("fzero") || _extInputs[model].name[i].Contains("a0")) rho=0;
+		  }
 		  _extInputs[model].cov_matrix(i,j) = rho*_extInputs[model].val_err[i]*_extInputs[model].val_err[j];
-		  if(i!=j)
-			_extInputs[model].cov_matrix(j,i) = _extInputs[model].cov_matrix(i,j);
+		  _extInputs[model].cov_matrix(j,i) = _extInputs[model].cov_matrix(i,j);
 		}
 	  }
 	  ftmp.close();
@@ -265,7 +272,7 @@ bool fitter::SetExtInputs(){
 	  TString n;
 	  double x, y, xerr, err;
 	  int i = 0;
-	  ifstream ftmp("inputs/"+model+"_values.txt");
+	  ifstream ftmp(dirInputs+model+"_values.txt");
 	  if(!ftmp.is_open()){
 		cout << model << " input file not found!" << endl; return false;
 	  }
@@ -284,16 +291,20 @@ bool fitter::SetExtInputs(){
 	  
 	  //read covariance
 	  double c;
-	  ifstream ftmpc("inputs/"+model+"_cov.txt");
+	  ifstream ftmpc(dirInputs+model+"_cov.txt");
 	  while(ftmpc >> n >> c) {
 		_extInputs[model].cov[n] = c;
 	  }
 	  
 	  //build covariance and its inverse
 	  for(int i = 0; i < _extInputs[model].dim; i++) {
-		for(int j = 0; j < _extInputs[model].dim; j++) {
-		  double cov = _extInputs[model].cov[Form("%s_%s",_extInputs[model].name[i].Data(),_extInputs[model].name[j].Data())];
-		  if(cov == 0) cov = _extInputs[model].cov[Form("%s_%s",_extInputs[model].name[j].Data(),_extInputs[model].name[i].Data())];
+		for(int j = 0; j <=i ; j++) {
+		  double cov = 0;
+		  if(_extInputs[model].cov.find(Form("%s_%s",_extInputs[model].name[i].Data(),_extInputs[model].name[j].Data()))!=_extInputs[model].cov.end())
+			cov = _extInputs[model].cov[Form("%s_%s",_extInputs[model].name[i].Data(),_extInputs[model].name[j].Data())];
+		  else if(_extInputs[model].cov.find(Form("%s_%s",_extInputs[model].name[j].Data(),_extInputs[model].name[i].Data()))!=_extInputs[model].cov.end())
+			cov = _extInputs[model].cov[Form("%s_%s",_extInputs[model].name[j].Data(),_extInputs[model].name[i].Data())];
+		  
 		  _extInputs[model].cov_matrix(i,j) = cov;
 		  if(i!=j)
 			_extInputs[model].cov_matrix(j,i) = _extInputs[model].cov_matrix(i,j);
@@ -305,8 +316,8 @@ bool fitter::SetExtInputs(){
 	
 	///inverse covariance matrix
 	TMatrixD cov_inv_matrix(_extInputs[model].dim,_extInputs[model].dim);
-	cov_inv_matrix = _extInputs[model].cov_matrix.InvertFast();
-	//cov_inv_matrix.Print();
+	TMatrixD tobeInverted = _extInputs[model].cov_matrix;
+	cov_inv_matrix = tobeInverted.InvertFast();
 	for(int i = 0; i < _extInputs[model].dim; i++)
 	  for(int j = 0; j < _extInputs[model].dim; j++)
 		_extInputs[model].cov_inv_matrix[i][j] = cov_inv_matrix(i,j);
@@ -325,15 +336,17 @@ void fitter::PrintConfigInfo(){
     FFModel FFModelRefDsS =  decRefDsS->GetFFModel();
     
     cout << " REFERENCE FF models of the templates: \n";
-    cout << " - Bs->Ds :  " << FFModelRefDs.model << ", parameters: " << FFModelRefDs.FFpars.size() << endl;
+    cout << " - Bs->Ds :  model " << FFModelRefDs.model << ", check is Ds*? " << decRefDs->GetIsDst() <<  ", VcbEff = " << decRefDs->GetVcbEff() << ", tauB = " << decRefDs->GetTauB()<< ", parameters: " << FFModelRefDs.FFpars.size() <<endl;
     for(auto p : FFModelRefDs.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
-    cout << " - Bs->Ds*:  " << FFModelRefDsS.model << ", parameters: " << FFModelRefDsS.FFpars.size() << endl;
+    cout << " - Bs->Ds*:  model " << FFModelRefDsS.model << ", check is Ds*? " << decRefDsS->GetIsDst()<< ", VcbEff = " << decRefDsS->GetVcbEff() << ", tauB = " << decRefDsS->GetTauB()<< ", parameters: " << FFModelRefDsS.FFpars.size() << endl;
     for(auto p : FFModelRefDsS.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
     cout << " Corresponding to BR(Bs->Ds): " <<  decRefDs->Eval_BR() << ", BR(Bs->Ds*):" << decRefDsS->Eval_BR() << endl;
     cout << "--------------------------------------------" << endl;
     cout << " FIT FF models for the templates: \n";
-    cout << " - Bs->Ds :  " << FFModelFitDs.model << ", parameters: " << FFModelFitDs.FFpars.size() << endl;
-    cout << " - Bs->Ds*:  " << FFModelFitDsS.model << ", parameters: " << FFModelFitDsS.FFpars.size() << endl;
+    cout << " - Bs->Ds :  model " <<  FFModelFitDs.model << ", check is Ds*? " << decFitDs->GetIsDst() <<  ", VcbEff = " << decFitDs->GetVcbEff() << ", tauB = " << decFitDs->GetTauB()<< ", parameters: " << FFModelFitDs.FFpars.size() << endl;
+	for(auto p : FFModelFitDs.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
+    cout << " - Bs->Ds*:  model " <<  FFModelFitDsS.model << ", check is Ds*? " << decFitDsS->GetIsDst()<<  ", VcbEff = " << decFitDsS->GetVcbEff() << ", tauB = " << decFitDsS->GetTauB()<< ", parameters: " << FFModelFitDsS.FFpars.size() << endl;
+    for(auto p : FFModelFitDsS.FFpars) cout << "\t " << p.name << "\t " << p.value << "\n";
     cout << " Initial pars give BR(Bs->Ds): " <<  decFitDs->Eval_BR() << ", BR(Bs->Ds*):" << decFitDsS->Eval_BR() << endl;
     cout << "--------------------------------------------" << endl;
     cout << " Fit parameters: " << fitPars.size() << "\n";
@@ -342,8 +355,7 @@ void fitter::PrintConfigInfo(){
     cout << "--------------------------------------------\n";
     cout << " Gaussian constrained parameters: ";
     cout << parConst.size() << endl;
-    if(parConst.size() == 0) return;
-    for(auto p : parConst) p.print();
+    if(parConst.size() != 0) for(auto p : parConst) p.print();
     cout << "--------------------------------------------\n";
     cout << " External inputs: " << theoryInputs.size() << endl;
     for(auto model : theoryInputs) cout << "\t " << model;
@@ -598,6 +610,8 @@ void fcn_tot(int &, double *, double &f, double *p, int ) {
 
    //add external inputs to chi2
   for(auto model : theoryInputs) {
+	//cout << " ================ " << endl;
+	//cout << model << endl;
 	extInputs inputs = _extInputs[model];
 	for(int i=0; i<inputs.dim; i++){
 	  for(int j=0; j<inputs.dim; j++){
@@ -664,8 +678,8 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
   }
   //cov.Print();
   
-  if(xname.Contains("f")){
-    double Gw = 0;
+  if(xname.Contains("fplus") || xname.Contains("fzero")){
+	double Gw{0}, f0{0};
     double r =  _Dsmass/_Bmass;
 
     //start the toys
@@ -693,11 +707,13 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
 		for (long unsigned int m=0; m<newPars.size(); ++m)
 		  if(m < ffmodelDs.FFpars.size())  tmpFFPars.push_back(newPars[m]);
 	
-		if     (ffmodelDs.model == "CLN") decayRates::FFfunctionsCLN(w, tmpFFPars, Gw);
-		else if(ffmodelDs.model == "BGL") decayRates::FFfunctionsBGL(w, tmpFFPars, Gw);
+		if     (ffmodelDs.model == "CLN") decayRates::FFfunctionsCLN(w, tmpFFPars, Gw, f0);
+		else if(ffmodelDs.model == "BGL") decayRates::FFfunctionsBGL(w, tmpFFPars, Gw, f0);
 		else{ cout << "Wrong FF model for decFitDs in FFfunctions!"; return; }
 
-		FFvalue = (1+r)/2./sqrt(r)*Gw;
+		if(xname.Contains("fplus")) FFvalue = (1+r)/2./sqrt(r)*Gw;
+		else FFvalue = f0;
+		
 		hg->Fill(FFvalue);
       }
 
@@ -790,7 +806,7 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
       }
     }
     else {
-      double A1{0}, A2{0}, V{0};
+	  double A1{0}, A2{0}, V{0}, A0{0};
       
       //start the toys
       int wPoints = 400;
@@ -820,26 +836,28 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
 	  }
 
 	  if     (newFFModel.model == "CLN")  {
-		double hw{0}, R1w{0}, R2w{0};
-		decayRates::FFfunctionsCLN(w, tmpFFPars, hw, R1w, R2w);
+		double hw{0}, R1w{0}, R2w{0}, R0w{0};
+		decayRates::FFfunctionsCLN(w, tmpFFPars, hw, R1w, R2w, R0w);
 		double r = mDsS/mB;
 		double R = 2.*sqrt(r)/(1.+r);
 		A1 = hw/2.*(w+1.)*R;
 		A2 = R2w*hw/R;
 		V  = R1w*hw/R;
+		A0 = R0w*hw/R;
 	  }
 	  else if(newFFModel.model == "BGL"){
-		decayRates::FFfunctionsBGL(w, tmpFFPars, A1, A2, V);
+		decayRates::FFfunctionsBGL(w, tmpFFPars, A1, A2, V, A0);
 	  }
 	
 	  if     (xname.Contains("v")) { FFvalue = V;  if(FFvalue!=FFvalue) { cout << " w = " << w << ", V  = " <<  V  << endl;} }
 	  else if(xname.Contains("a1")){ FFvalue = A1; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A1 = " <<  A1 << endl;} }
 	  else if(xname.Contains("a2")){ FFvalue = A2; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A2 = " <<  A2 << endl;} }
+	  else if(xname.Contains("a0")){ FFvalue = A0; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A0 = " <<  A0 << endl;} }
 	  else{
 		cout << "Wrong name for x point for the external input in FFfunction!" << endl;
 		return;
 	  }
-	hg->Fill(FFvalue);
+	  hg->Fill(FFvalue);
       }
 
       hg->GetQuantiles(dim,quantiles,sum);
@@ -892,14 +910,15 @@ double FFfunctions(TString xname, double w, double werr) {
   
   double FFvalue = 0;
   
-  if(xname.Contains("f")){
-	double Gw = 0;
+  if(xname.Contains("fplus") || xname.Contains("fzero")){
+	double Gw{0}, f0{0};
 	double r =  _Dsmass/_Bmass;
 	FFModel ffmodel =  decFitDs->GetFFModel();
-	if     (ffmodel.model == "CLN") decayRates::FFfunctionsCLN(w, ffmodel.FFpars, Gw);
-	else if(ffmodel.model == "BGL") decayRates::FFfunctionsBGL(w, ffmodel.FFpars, Gw);
+	if     (ffmodel.model == "CLN") decayRates::FFfunctionsCLN(w, ffmodel.FFpars, Gw, f0);
+	else if(ffmodel.model == "BGL") decayRates::FFfunctionsBGL(w, ffmodel.FFpars, Gw, f0);
 	else{ cout << "Wrong FF model for decFitDs in FFfunctions!"; return 1e20; }
 	FFvalue = (1+r)/2./sqrt(r)*Gw;
+	if(xname.Contains("fzero")) FFvalue = f0;
   }
   else {
 	double mB = _Bmass; double mDsS = _DsSmass;
@@ -915,25 +934,27 @@ double FFfunctions(TString xname, double w, double werr) {
 	  f->Delete();
 	}
 	else{
-	  double V{0}, A1{0}, A2{0};
+	  double V{0}, A1{0}, A2{0}, A0{0};
 	  FFModel ffmodel = decFitDsS->GetFFModel();
 	  if     (ffmodel.model == "CLN")  {
-		double hw{0}, R1w{0}, R2w{0};
-		decayRates::FFfunctionsCLN(w, ffmodel.FFpars, hw, R1w, R2w);
+		double hw{0}, R1w{0}, R2w{0}, R0w{0};
+		decayRates::FFfunctionsCLN(w, ffmodel.FFpars, hw, R1w, R2w, R0w);
 		double r = mDsS/mB;
 		double R = 2.*sqrt(r)/(1.+r);
 		A1 = hw/2.*(w+1.)*R;
 		A2 = R2w*hw/R;
 		V  = R1w*hw/R;
+		A0 = R0w*hw/R;
 	  }
 	  else if(ffmodel.model == "BGL"){
-		decayRates::FFfunctionsBGL(w, ffmodel.FFpars, A1, A2, V);
+		decayRates::FFfunctionsBGL(w, ffmodel.FFpars, A1, A2, V, A0);
 	  }
 	  else { cout << "Wrong FF model for decFitDs in FFfunctions!"; return 1e20; }
 	
 	  if     (xname.Contains("v")) { FFvalue = V;  if(FFvalue!=FFvalue) { cout << " w = " << w << ", V  = " <<  V  << endl;} }
 	  else if(xname.Contains("a1")){ FFvalue = A1; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A1 = " <<  A1 << endl;} }
 	  else if(xname.Contains("a2")){ FFvalue = A2; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A2 = " <<  A2 << endl;} }
+	  else if(xname.Contains("a0")){ FFvalue = A0; if(FFvalue!=FFvalue) { cout << " w = " << w << ", A0 = " <<  A0 << endl;} }
 	  else{
 		cout << "Wrong name for x point for the external input in FFfunction!" << endl;
 		return 1e20;
@@ -1175,126 +1196,154 @@ bool fitter::DoProjection() {
 	TH1D * hpull = (TH1D*)hData->Clone("hpull");
 	hpull->Reset();
     DrawResiduals(hData,hFit,hpull);
-    cperp->SaveAs("fit_projections/fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
-    cperp->SaveAs("fit_projections/fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
+    cperp->SaveAs("fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
+    cperp->SaveAs("fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   
   
   TString fmodels[]  ={"HPQCD_Ds","MILC","LCSRDs"};
   const int Nfmodels = sizeof(fmodels)/sizeof(fmodels[0]);
   int fcolor[]={1,2,13};
   int marker[]={21,22,23};
-  TGraphErrors* grfplus[Nfmodels];
-  TGraphErrors* grfpluspull[Nfmodels];
+  TGraphErrors* grfplus[2][Nfmodels];
+  TGraphErrors* grfpluspull[2][Nfmodels];
   for(int im=0; im<Nfmodels; ++im){
-	grfplus[im] = new TGraphErrors();
-	grfplus[im]->SetMarkerColor(fcolor[im]);
-	grfplus[im]->SetLineColor(fcolor[im]);
-	grfplus[im]->SetMarkerStyle(marker[im]);
-	grfplus[im]->SetMarkerSize(1.1);
-	grfpluspull[im] = new TGraphErrors();
-	grfpluspull[im]->SetMarkerColor(fcolor[im]);
-	grfpluspull[im]->SetLineColor(fcolor[im]);
-	grfpluspull[im]->SetMarkerStyle(marker[im]);
-	grfpluspull[im]->SetMarkerSize(1);
+	for(int i=0;i<2;++i) {
+	  grfplus[i][im] = new TGraphErrors();
+	  grfplus[i][im]->SetMarkerColor(fcolor[im]);
+	  grfplus[i][im]->SetLineColor(fcolor[im]);
+	  grfplus[i][im]->SetMarkerStyle(marker[im]);
+	  grfplus[i][im]->SetMarkerSize(1.1);
+	  grfpluspull[i][im] = new TGraphErrors();
+	  grfpluspull[i][im]->SetMarkerColor(fcolor[im]);
+	  grfpluspull[i][im]->SetLineColor(fcolor[im]);
+	  grfpluspull[i][im]->SetMarkerStyle(marker[im]);
+	  grfpluspull[i][im]->SetMarkerSize(1);
+	}
+	
 	TString n;
 	double x, y, err;
-	int ip = 0;
-	ifstream ftmp("inputs/"+fmodels[im]+"_values.txt");
+	int ip = 0; int ip0 = 0;
+	ifstream ftmp(dirInputs+fmodels[im]+"_values.txt");
 	if(!ftmp.is_open()){
 	  cout << fmodels[im] << " input file not found!" << endl; return false;
 	}
 	while(ftmp >> n >> x >> y >> err) {
-	  grfplus[im]->SetPoint(ip,x,y);
-	  grfplus[im]->SetPointError(ip,0,err);
-	  grfpluspull[im]->SetPoint(ip,x,(y-FFfunctions("f",x,0))/err);
-	  grfpluspull[im]->SetPointError(ip,0,0);
-	  ip++;
+	  if(n.Contains("fplus")){
+		grfplus[0][im]->SetPoint(ip,x,y);
+		grfplus[0][im]->SetPointError(ip,0,err);
+		grfpluspull[0][im]->SetPoint(ip,x,(y-FFfunctions("fplus",x,0))/err);
+		grfpluspull[0][im]->SetPointError(ip,0,0);
+		ip++;
+	  }else if(n.Contains("fzero")){
+		grfplus[1][im]->SetPoint(ip0,x,y);
+		grfplus[1][im]->SetPointError(ip0,0,err);
+		grfpluspull[1][im]->SetPoint(ip0,x,(y-FFfunctions("fzero",x,0))/err);
+		grfpluspull[1][im]->SetPointError(ip0,0,0);
+		ip0++;
+	  }
 	}
   }
-  TGraph* grfplusFit = new TGraph();
-  grfplusFit->SetLineWidth(2);
-  grfplusFit->SetLineColor(9);
+  
+  TGraph* grfplusFit[2];
+  TCanvas* cf[2];
+  TPad*    upperPadcf[2];
+  TPad*    lowerPadcf[2];
+  TMultiGraph* gf[2];
+  TLegend * legf[2];
+  TLine * l1gf[2]; TLine * l2gf[2]; TLine * l3gf[2];
+  TString titleyf[]={"#it{f}_{+}(#it{w})","#it{f}_{0}(#it{w})"};
+  TString namef[]={"fplus","fzero"};
+  TString fmodelsName[]  ={"HPQCD, PRD101 (2020) 7, 074513","MILC, PRD85 (2012) 114502","LCSR, EPJC80 (2020) 4, 347"};
+  TMultiGraph* gfpull[2];
+  for(int i=0;i<2;++i){
+	grfplusFit[i] = new TGraph();
+	grfplusFit[i]->SetLineWidth(2);
+	grfplusFit[i]->SetLineColor(9);
+  }
+  
   for(int p=0;p<1000;++p){
 	double w = 1.0 + 1.33/1000*p;
-	grfplusFit->SetPoint(p,w,FFfunctions("f",w,0));
+	grfplusFit[0]->SetPoint(p,w,FFfunctions("fplus",w,0));
+    grfplusFit[1]->SetPoint(p,w,FFfunctions("fzero",w,0));
   }
-  TCanvas* cf = new TCanvas("cf","cf",800,800);
-  cf->cd();
-  //cf->SetLeftMargin(0.2);
-  //cf->SetRightMargin(0.1);
-  TPad*    upperPadcf = new TPad("upperPadcf", "upperPadcf",   .005, .2525, .995, .995);   
-  TPad*    lowerPadcf = new TPad("lowerPadcf", "lowerPadcf",   .005, .005, .995, .2475);   
-  upperPadcf->SetLeftMargin(0.2);                                                         
-  upperPadcf->SetRightMargin(0.1); 
-  lowerPadcf->SetLeftMargin(0.2);                                                         
-  lowerPadcf->SetRightMargin(0.1); 
-  upperPadcf->Draw();                                                                     
-  lowerPadcf->Draw();                                                                     
-  upperPadcf->cd();                                                                       
-
-  TMultiGraph* gf = new TMultiGraph();
-  std::vector<TGraphErrors*> gfCL;
-  DrawFFErrorBand("f",gfCL);
-  gf->Add(gfCL[2],"p");
-  gf->Add(gfCL[1],"p");
-  gf->Add(gfCL[0],"p");
-  //gf->Add(grfplusFit,"l");
-  for(int im=0; im<Nfmodels; ++im) gf->Add(grfplus[im],"p");
-  gf->GetXaxis()->SetLimits(0.9,2.4);
-  gf->SetMinimum(0);
-  gf->SetMaximum(1.8);
-  gf->GetYaxis()->SetTitle("#it{f}_{+}(#it{w})");
-  gf->GetXaxis()->SetTitle("#it{w}");
-  gf->Draw("a");
-  TLegend * legf;
-  legf = new TLegend(0.39,0.75,0.59,0.95);
-  legf->SetFillStyle(0);
-  legf->SetTextSize(0.045);
-  legf->SetBorderSize(0);
-  legf->SetTextFont(132);
-  TString fmodelsName[]  ={"HPQCD, PRD101 (2020) 7, 074513","MILC, PRD85 (2012) 114502","LCSR, EPJC80 (2020) 4, 347"};
-  for(int im=0; im<Nfmodels; ++im) legf->AddEntry(grfplus[im],fmodelsName[im],"pe");
-  //legf->AddEntry(grfplusFit,"Fit","l");
-  legf->Draw("SAME");
-
-
-  lowerPadcf->cd();                                                                       
-  TMultiGraph* gfpull = new TMultiGraph();
-  for(int im=0; im<Nfmodels; ++im) gfpull->Add(grfpluspull[im],"p"); 
-  gfpull->GetXaxis()->SetLimits(0.9,2.4);
-  gfpull->GetHistogram()->GetYaxis()->SetNdivisions(505);
-  gfpull->GetHistogram()->GetYaxis()->SetLabelSize(0.13);
-  gfpull->GetHistogram()->GetYaxis()->SetRangeUser(-5,5);
-  gfpull->GetHistogram()->GetXaxis()->SetLabelSize(0);
-  gfpull->GetHistogram()->GetYaxis()->SetTitle("Pulls");
-  gfpull->GetHistogram()->GetYaxis()->SetTitleSize(0.15);
-  gfpull->GetHistogram()->GetYaxis()->SetTitleOffset(0.4);
-  gfpull->GetHistogram()->GetXaxis()->SetTitleSize(0);
-
-  TLine * l1gf = new TLine(gfpull->GetHistogram()->GetXaxis()->GetXmin(),-3,gfpull->GetHistogram()->GetXaxis()->GetXmax(),-3);
-  TLine * l2gf = new TLine(gfpull->GetHistogram()->GetXaxis()->GetXmin(),+3,gfpull->GetHistogram()->GetXaxis()->GetXmax(),+3);
-  TLine * l3gf = new TLine(gfpull->GetHistogram()->GetXaxis()->GetXmin(),0,gfpull->GetHistogram()->GetXaxis()->GetXmax(),0);
-  l1gf->SetLineStyle(kDashed);
-  l2gf->SetLineStyle(kDashed);
-  l3gf->SetLineStyle(kDashed);
-  gfpull->Draw("a");
-  l1gf->Draw("SAME");
-  l2gf->Draw("SAME");
-  l3gf->Draw("SAME");
-
-  cf->SaveAs("fit_projections/fit_projection_fplus_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
-  cf->SaveAs("fit_projections/fit_projection_fplus_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   
-  
+  for(int i=0;i<2;++i){
+	cf[i] = new TCanvas(Form("cf_%i",i),Form("cf_%i",i),800,800);
+	cf[i]->cd();
+	//cf->SetLeftMargin(0.2);
+	//cf->SetRightMargin(0.1);
+	upperPadcf[i] = new TPad(Form("upperPadcf_%i",i), Form("upperPadcf_%i",i),   .005, .2525, .995, .995);
+	lowerPadcf[i] = new TPad(Form("lowerPadcf_%i",i), Form("lowerPadcf_%i",i),   .005, .005, .995, .2475);
+	upperPadcf[i]->SetLeftMargin(0.2);
+	upperPadcf[i]->SetRightMargin(0.1);
+	lowerPadcf[i]->SetLeftMargin(0.2);
+	lowerPadcf[i]->SetRightMargin(0.1);
+	upperPadcf[i]->Draw();
+	lowerPadcf[i]->Draw();
+	upperPadcf[i]->cd();
+
+	gf[i] = new TMultiGraph();
+	  
+	std::vector<TGraphErrors*> gfCL;
+	if(i==0) DrawFFErrorBand("fplus",gfCL);
+	else DrawFFErrorBand("fzero",gfCL);
+	  
+	gf[i]->Add(gfCL[2],"p");
+	gf[i]->Add(gfCL[1],"p");
+	gf[i]->Add(gfCL[0],"p");
+	for(int im=0; im<Nfmodels; ++im) gf[i]->Add(grfplus[i][im],"p");
+	gf[i]->GetXaxis()->SetLimits(0.9,2.4);
+	gf[i]->SetMinimum(0);
+	gf[i]->SetMaximum(1.8);
+	gf[i]->GetYaxis()->SetTitle(titleyf[i]);
+	gf[i]->GetXaxis()->SetTitle("#it{w}");
+	gf[i]->Draw("a");
+	legf[i] = new TLegend(0.39,0.75,0.59,0.95);
+	legf[i]->SetFillStyle(0);
+	legf[i]->SetTextSize(0.045);
+	legf[i]->SetBorderSize(0);
+	legf[i]->SetTextFont(132);
+	
+	for(int im=0; im<Nfmodels; ++im) legf[i]->AddEntry(grfplus[i][im],fmodelsName[im],"pe");
+	//legf->AddEntry(grfplusFit,"Fit","l");
+	legf[i]->Draw("SAME");
+
+	lowerPadcf[i]->cd();
+	gfpull[i] = new TMultiGraph();
+	for(int im=0; im<Nfmodels; ++im) gfpull[i]->Add(grfpluspull[i][im],"p");
+	gfpull[i]->GetXaxis()->SetLimits(0.9,2.4);
+	gfpull[i]->GetHistogram()->GetYaxis()->SetNdivisions(505);
+	gfpull[i]->GetHistogram()->GetYaxis()->SetLabelSize(0.13);
+	gfpull[i]->GetHistogram()->GetYaxis()->SetRangeUser(-5,5);
+	gfpull[i]->GetHistogram()->GetXaxis()->SetLabelSize(0);
+	gfpull[i]->GetHistogram()->GetYaxis()->SetTitle("Pulls");
+	gfpull[i]->GetHistogram()->GetYaxis()->SetTitleSize(0.15);
+	gfpull[i]->GetHistogram()->GetYaxis()->SetTitleOffset(0.4);
+	gfpull[i]->GetHistogram()->GetXaxis()->SetTitleSize(0);
+
+	l1gf[i] = new TLine(gfpull[i]->GetHistogram()->GetXaxis()->GetXmin(),-3,gfpull[i]->GetHistogram()->GetXaxis()->GetXmax(),-3);
+	l2gf[i] = new TLine(gfpull[i]->GetHistogram()->GetXaxis()->GetXmin(),+3,gfpull[i]->GetHistogram()->GetXaxis()->GetXmax(),+3);
+	l3gf[i] = new TLine(gfpull[i]->GetHistogram()->GetXaxis()->GetXmin(),0,gfpull[i]->GetHistogram()->GetXaxis()->GetXmax(),0);
+	l1gf[i]->SetLineStyle(kDashed);
+	l2gf[i]->SetLineStyle(kDashed);
+	l3gf[i]->SetLineStyle(kDashed);
+	gfpull[i]->Draw("a");
+	l1gf[i]->Draw("SAME");
+	l2gf[i]->Draw("SAME");
+	l3gf[i]->Draw("SAME");
+
+	cf[i]->SaveAs("fit_projection_"+namef[i]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
+	cf[i]->SaveAs("fit_projection_"+namef[i]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
+  }
   
   TString VAmodels[] ={"HPQCD_DsS","LCSRDsS"};
   const int NVAmodels = sizeof(VAmodels)/sizeof(VAmodels[0]);
   int colorsVA[]={1,13};
   int markersVA[]={21,23};
-  TGraphErrors* grDst[3][NVAmodels];
-  TGraphErrors* grDstpull[3][NVAmodels];
+  TGraphErrors* grDst[4][NVAmodels];
+  TGraphErrors* grDstpull[4][NVAmodels];
   for(int im=0; im<NVAmodels; ++im){
-	for(int i=0;i<3;++i) {
+	for(int i=0;i<4;++i) {
 	  grDst[i][im] = new TGraphErrors();
 	  grDst[i][im]->SetLineWidth(2);
 	  grDst[i][im]->SetMarkerColor(colorsVA[im]);
@@ -1308,10 +1357,11 @@ bool fitter::DoProjection() {
 	  grDstpull[i][im]->SetMarkerStyle(markersVA[im]);
 	  grDstpull[i][im]->SetMarkerSize(1);
 	}
+	
 	TString n;
 	double x, y, err;
-	int ipv{0},ipa1{0},ipa2{0};
-	ifstream ftmp("inputs/"+VAmodels[im]+"_values.txt");
+	int ipv{0},ipa1{0},ipa2{0},ipa0{0};
+	ifstream ftmp(dirInputs+VAmodels[im]+"_values.txt");
 	if(!ftmp.is_open()){
 	  cout << VAmodels[im] << " input file not found!" << endl; return false;
 	}
@@ -1319,7 +1369,7 @@ bool fitter::DoProjection() {
 	  //cout << n << x << y << err<< endl;
 	  if     (n.Contains("v") ){ 
 	    grDst[0][im]->SetPoint(ipv,x,y);  grDst[0][im]->SetPointError(ipv,0,err);  
-	    grDstpull[0][im]->SetPoint(ipv,x,(y-FFfunctions("v" ,x,0))/err);  grDstpull[0][im]->SetPointError(ipv,0,0);  
+	    grDstpull[0][im]->SetPoint(ipv,x,(y-FFfunctions("v",x,0))/err);  grDstpull[0][im]->SetPointError(ipv,0,0);
 	    ipv++; 
 	  }
 	  else if(n.Contains("a1")){ 
@@ -1332,11 +1382,17 @@ bool fitter::DoProjection() {
 	    grDstpull[2][im]->SetPoint(ipa2,x,(y-FFfunctions("a2",x,0))/err); grDstpull[2][im]->SetPointError(ipa2,0,0); 
 	    ipa2++;
 	  }
+	  else if(n.Contains("a0")){
+		grDst[3][im]->SetPoint(ipa0,x,y); grDst[3][im]->SetPointError(ipa0,0,err);
+		grDstpull[3][im]->SetPoint(ipa0,x,(y-FFfunctions("a0",x,0))/err); grDstpull[3][im]->SetPointError(ipa0,0,0);
+		ipa0++;
+	  }
 	}
   }
-  TGraph* grDstFit[3];
-  TString titley[]={"#it{V}(#it{w})","#it{A}_{1}(#it{w})","#it{A}_{2}(#it{w})"};
-  for(int i=0;i<3;++i){
+  
+  TGraph* grDstFit[4];
+  TString titley[]={"#it{V}(#it{w})","#it{A}_{1}(#it{w})","#it{A}_{2}(#it{w})","#it{A}_{0}(#it{w})"};
+  for(int i=0;i<4;++i){
 	grDstFit[i] = new TGraph();
 	grDstFit[i]->SetLineWidth(2);
 	grDstFit[i]->SetLineColor(9);
@@ -1346,6 +1402,7 @@ bool fitter::DoProjection() {
 	grDstFit[0]->SetPoint(p,w,FFfunctions("v" ,w,0));
 	grDstFit[1]->SetPoint(p,w,FFfunctions("a1",w,0));
 	grDstFit[2]->SetPoint(p,w,FFfunctions("a2",w,0));
+	grDstFit[3]->SetPoint(p,w,FFfunctions("a0",w,0));
   }
   
   TGraphErrors* grDstHPQCD = new TGraphErrors();
@@ -1367,15 +1424,15 @@ bool fitter::DoProjection() {
   grDstHPQCD->SetPointError(0,0,ehpqcdDsS);
   grDstHPQCDpull->SetPoint(0,1,(hpqcdDsS-FFfunctions("a1",1,0))/ehpqcdDsS);
   grDstHPQCDpull->SetPointError(0,0,0);
-  
-  TMultiGraph* gVA[3];
-  TMultiGraph* gVApull[3];
-  TCanvas* cVA[3];
-  TPad * upperPadVA[3];
-  TPad * lowerPadVA[3];
-  TLegend * legVA[3];
-  TString funcname[]={"V","A1","A2"};
-  for(int cp=0;cp<3;++cp){
+ 
+  TMultiGraph* gVA[4];
+  TMultiGraph* gVApull[4];
+  TCanvas* cVA[4];
+  TPad * upperPadVA[4];
+  TPad * lowerPadVA[4];
+  TLegend * legVA[4];
+  TString funcname[]={"V","A1","A2","A0"};
+  for(int cp=0;cp<4;++cp){
         std::vector<TGraphErrors*> gVACL;
         cVA[cp] = new TCanvas(Form("c_%i",cp),Form("c_%i",cp),800,800);
 	//cVA[cp]->SetLeftMargin(0.2);
@@ -1397,11 +1454,14 @@ bool fitter::DoProjection() {
 	if(funcname[cp] == "A1")
 	  DrawFFErrorBand("a1",gVACL);
 	if(funcname[cp] == "A2")
-	  DrawFFErrorBand("a2",gVACL); 
+	  DrawFFErrorBand("a2",gVACL);
+	if(funcname[cp] == "A0")
+	  DrawFFErrorBand("a0",gVACL);
 
 	gVA[cp]->Add(gVACL[2],"p");
 	gVA[cp]->Add(gVACL[1],"p");
 	gVA[cp]->Add(gVACL[0],"p");
+  
 	//gVA[cp]->Add(grDstFit[cp],"l");
 	for(int m=0; m<NVAmodels; m++) {
 	  gVA[cp]->Add(grDst[cp][m],"p");
@@ -1453,8 +1513,8 @@ bool fitter::DoProjection() {
 	l2gf->Draw("SAME");
 	l3gf->Draw("SAME");
 
-	cVA[cp]->SaveAs("fit_projections/fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
-	cVA[cp]->SaveAs("fit_projections/fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
+	cVA[cp]->SaveAs("fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
+	cVA[cp]->SaveAs("fit_projection_"+funcname[cp]+"_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   }
   
   
@@ -1464,7 +1524,7 @@ bool fitter::DoProjection() {
   TString n;
   double x, y, xerr, yerr;
   int ip = 1;
-  ifstream ftmp("inputs/LHCb-PAPER-2019-046_values.txt");
+  ifstream ftmp(dirInputs+"LHCb-PAPER-2019-046_values.txt");
   if(!ftmp.is_open()){
 	cout << "LHCb w data input file not found!" << endl; return false;
   }
@@ -1537,8 +1597,8 @@ bool fitter::DoProjection() {
 
 
   
-  cw->SaveAs("fit_projections/fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
-  cw->SaveAs("fit_projections/fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
+  cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
+  cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
   
   return true;
 	

@@ -2,7 +2,7 @@
 #define fitter_h
 
 #include "Tools.h"
-#include "newDecayRate.h"
+#include "UpdatedDecayRate.h"
 
 #include "TTree.h"
 #include "TFile.h"
@@ -107,7 +107,8 @@ TH1D * hData;
 TH1D* hacc[2];
 std::map<TString,extInputs> _extInputs;
 
-bool _rate1D = false;
+const bool _rate1D = false;
+const TString dirInputs = "./new_inputs_modified/";
 
 void   SetAllPars(double* );
 void   SetAllPars();
