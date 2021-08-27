@@ -629,6 +629,9 @@ void fcn_tot(int &, double *, double &f, double *p, int ) {
   
 }
 
+
+
+//______________________________________________
 void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
 
   TColor * col = new TColor(); 
@@ -678,7 +681,164 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
   }
   //cov.Print();
   
-  if(xname.Contains("fplus") || xname.Contains("fzero")){
+
+  if(xname.Contains("proj")) {
+
+    std::vector<TH1D*> hg;
+    for(int i = 0; i < 20; i++) {
+      TH1D * hgtmp =  new TH1D(Form("hg%d",i),Form("hg%d",i),10000,0,50e3);
+      hg.push_back(hgtmp);
+    }
+    for(int i = 0; i < 4; i++) {
+      fitBand[i] = fitComp[i];
+    }
+
+    double Vcb(1), etaEW(1);
+    double effRD(1), BrBsDs(1), BrBdD(1), fsfdBrDs(1), BrD(1), NrefD(1);
+    double effRDst(1), BrBsDsS(1), BrBdDst(1), BrDst(1), NrefDst(1);
+    double physBkg(1), combBkg(1);
+
+    double rateDs  = decFitDs->Eval_Gamma();
+    double rateDsS = decFitDsS->Eval_Gamma(); 
+
+    //need new models to draw the bars, to avoid modifying the origianl one
+    decayRates * newModelDs = new decayRates(decFitDs->GetFFModel(),false);
+    FFModel newFFModelDs;
+    newFFModelDs.model = ffmodelDs.model;
+    newFFModelDs.initNFFpars(ffmodelDs.FFpars.size());	
+    newModelDs->SetTauB(decFitDs->GetTauB());                                 
+    newModelDs->SetVcbEff(decFitDs->GetVcbEff());    
+
+    decayRates * newModelDsS = new decayRates(decFitDsS->GetFFModel(),true);
+    FFModel newFFModelDsS;
+    newFFModelDsS.model = ffmodelDsS.model;
+    newFFModelDsS.initNFFpars(ffmodelDsS.FFpars.size());	
+    newModelDsS->SetTauB(decFitDsS->GetTauB());                                 
+    newModelDsS->SetVcbEff(decFitDsS->GetVcbEff());    
+
+      for(int i = 0; i < 100; i++) { //nExtractions per point
+	fitBand[0].pdf->Reset();
+	fitBand[1].pdf->Reset();
+	tmpFFPars.clear();
+	TVectorD shift(allPars.size());
+	TDecompChol tdc(cov);
+	if ( !tdc.Decompose() ) {cout << "Something is wrong with decomposition!" << endl; return;}
+	TMatrixD u = tdc.GetU(); u.T();
+	TRandom3 ran(i+1);
+	
+	for (long unsigned int m=0; m<allPars.size(); ++m) shift(m) = ran.Gaus();
+	shift = u*shift;
+	
+	for (long unsigned int m=0; m<allPars.size(); ++m) {
+	  for (long unsigned int n=0; n<newPars.size(); ++n)
+	    //if(newPars[n].inum == allPars[m].inum) newPars[n].value = allPars[m].value + shift(m);
+	    if(newPars[n].inum == allPars[m].inum) newPars[n].value = allPars[m].value;
+	}
+	
+	for (long unsigned int m=0; m<newPars.size(); ++m) {
+	  if(newPars[m].name == "Vcb")           Vcb  = newPars[m].value;
+	  else if(newPars[m].name == "etaEW")    etaEW  = newPars[m].value;
+	  else if(newPars[m].name == "effRD")    effRD  = newPars[m].value;
+	  else if(newPars[m].name == "BrBsDs")   BrBsDs  = newPars[m].value;
+	  else if(newPars[m].name == "BrBdD")    BrBdD  = newPars[m].value;
+	  else if(newPars[m].name == "fsfdBrDs") fsfdBrDs  = newPars[m].value;
+	  else if(newPars[m].name == "BrD")      BrD  = newPars[m].value;
+	  else if(newPars[m].name == "NrefD")    NrefD  = newPars[m].value;
+	  else if(newPars[m].name == "effRDst")  effRDst  = newPars[m].value;
+	  else if(newPars[m].name == "BrBsDsS")  BrBsDsS  = newPars[m].value;
+	  else if(newPars[m].name == "BrBdDst")  BrBdDst  = newPars[m].value;
+	  else if(newPars[m].name == "BrDst")    BrDst  = newPars[m].value;
+	  else if(newPars[m].name == "NrefDst")  NrefDst  = newPars[m].value;
+	  else if(newPars[m].name == "physBkg")  physBkg  = newPars[m].value;
+	  else if(newPars[m].name == "combBkg")  combBkg  = newPars[m].value;
+	}
+	for (long unsigned int m=0; m<newPars.size(); ++m) {
+	  if(m < ffmodelDs.FFpars.size())  tmpFFPars.push_back(newPars[m]);
+	  if(m >= ffmodelDs.FFpars.size() && m < ffmodelDsS.FFpars.size()+ffmodelDs.FFpars.size()) tmpFFPars.push_back(newPars[m]);
+	}
+
+	for(long unsigned int m = 0; m < tmpFFPars.size(); ++m) {
+	  if(m < ffmodelDs.FFpars.size()) newFFModelDs.FFpars[m] = tmpFFPars[m]; 
+	  if(m >= ffmodelDs.FFpars.size() && m < ffmodelDsS.FFpars.size()+ffmodelDs.FFpars.size()) newFFModelDsS.FFpars[m-ffmodelDs.FFpars.size()] = tmpFFPars[m]; 
+	}
+
+	
+	newModelDs->SetFFModel(newFFModelDs);
+	newModelDs->SetVcbEff(Vcb*etaEW);
+	newModelDsS->SetFFModel(newFFModelDsS);
+	newModelDsS->SetVcbEff(Vcb*etaEW);
+
+	double num(0);
+	for(auto cand : mccand) {                                                                                                     
+	  if(cand.signalCategory == 0)   num = newModelDs->Eval_dGdw(cand.wvar) / rateDs;                                             
+	  else if(cand.signalCategory == 1) {                                                                                   
+	    if(_rate1D) num = newModelDsS->Eval_dGdw(cand.wvar) / rateDsS;                                                    
+	    else num = newModelDsS->Eval_dGdwdAngle(cand.wvar, cand.ctl, cand.ctd, cand.chi) / rateDsS;                       
+	  }
+	  
+	  double wFF = num/cand.den;                                                                                                  
+	  
+	  if (wFF!=wFF) {                                                                                                             
+	    cout << "wFF is NaN, this should never happen!" << endl;                                                                
+	    printf("num: %f den: %f rateDs: %f rateDsS: %f \n", num, cand.den, rateDs, rateDsS);                                    
+	    FFModel FFModelFitDs  =  newModelDs->GetFFModel();                                                                
+	    FFModel FFModelFitDsS =  newModelDsS->GetFFModel();                                                               
+	    cout << " - Bs->Ds :  " << FFModelFitDs.model << ", parameters: " << FFModelFitDs.FFpars.size() << endl;        
+	    for(auto p : FFModelFitDs.FFpars) p.print();                                                                        
+	    cout << " - Bs->Ds*:  " << FFModelFitDsS.model << ", parameters: " << FFModelFitDsS.FFpars.size() << endl;          
+	    for(auto p : FFModelFitDsS.FFpars) p.print();                                                                       
+	    
+	    continue;                                                                                                               
+	  }                                                                                                                           
+
+
+	  fitBand[cand.signalCategory].pdf->Fill(cand.pperp,wFF);                                                                     
+	}
+
+	for(int i =0; i<2; ++i) fitBand[i].pdf->Multiply(hacc[i]);            
+	
+
+	BrBsDs  = newModelDs->Eval_BR(); 
+	BrBsDsS = newModelDsS->Eval_BR();
+	
+	fitBand[0].yield = effRD  * BrBsDs/ BrBdD  *  fsfdBrDs / BrD * NrefD ;                                                      
+	fitBand[1].yield = effRDst* BrBsDsS/BrBdDst * fsfdBrDs / BrD / BrDst * NrefDst ;                                            
+	fitBand[2].yield = physBkg;                                                                                                 
+	fitBand[3].yield = combBkg;                       
+	
+	for(auto c : fitBand)  c.pdf->Scale(c.yield/c.pdf->Integral()); 
+	
+	TH1D * hFit = (TH1D*) hData->Clone("hFit"); 
+	hFit->Reset(); 
+	for(auto c : fitBand) hFit->Add(c.pdf);
+	
+	for(int k = 0; k < hData->GetNbinsX(); k++) {
+	  hg[k]->Fill(hFit->GetBinContent(k+1));
+	}
+	hFit->Delete();
+
+	
+      }
+      
+      for(int k = 0; k < hData->GetNbinsX(); k++) {  
+	double w(0), werr(0);
+	w = hData->GetBinCenter(k+1);
+	werr = hData->GetBinWidth(k+1)/2.0;
+	hg[k]->GetQuantiles(dim,quantiles,sum);
+	gr[0]->SetPoint(k,w,hg[k]->GetMean());
+	gr[0]->SetPointError(k,werr,hg[k]->GetMean()-quantiles[0]);
+	gr[1]->SetPoint(k,w,hg[k]->GetMean());
+	gr[1]->SetPointError(k,werr,hg[k]->GetMean()-quantiles[2]);
+	gr[2]->SetPoint(k,w,hg[k]->GetMean());
+	gr[2]->SetPointError(k,werr,hg[k]->GetMean()-quantiles[4]);
+    
+	//hg->Delete();
+      }
+    
+
+  }
+  else if(xname.Contains("fplus") || xname.Contains("fzero")){
+	
 	double Gw{0}, f0{0};
     double r =  _Dsmass/_Bmass;
 
@@ -743,8 +903,8 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
     
     if(xname.Contains("bin")){ 
       double norm  = 1.;
-	  double Vcb   = 1.;
-	  double etaEW = 1.;
+      double Vcb   = 1.;
+      double etaEW = 1.;
       double wmin = 1.;
       double wmax = (mB*mB + mDsS*mDsS) / (2.*mB*mDsS);
       double w(0), werr(0);
@@ -753,6 +913,7 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
 		werr = (wBins[k+1]-wBins[k])/2.;
 
 		TH1D * hg = new TH1D("hg","hg",10000,0,5);
+
 		for(int i = 0; i < 1000; i++) { //nExtractions per point
 	  
 		  tmpFFPars.clear();
@@ -792,7 +953,7 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
 	  FFvalue = yFF/intTot*_normHistLHCb;
 	  hg->Fill(FFvalue/(werr*2.0));
 	  f->Delete();
-	}
+		}
 
 	hg->GetQuantiles(dim,quantiles,sum);
 	gr[0]->SetPoint(k,w,hg->GetMean());
@@ -1137,9 +1298,10 @@ bool fitter::DoProjection() {
 	plotStyle();
 	FFModel FFModelFitDs  =  decFitDs->GetFFModel();
 	FFModel FFModelFitDsS =  decFitDsS->GetFFModel();
-  
+   
 
 	TCanvas* cperp = new TCanvas("cperp", "cperp", 800,800);
+	
 	TPad* upperPad; TPad* lowerPad;
 	upperPad = new TPad("plot_perp", "plot_perp", .005, .2525, .995, .995);
 	lowerPad = new TPad("residuals_perp", "residuals_perp", .005, .005, .995, .2475);
@@ -1156,10 +1318,10 @@ bool fitter::DoProjection() {
 	hData->SetMarkerColor(kBlack);
 	hData->SetLineColor(kBlack);
 	hData->SetMarkerSize(0.8);
-    hData->GetYaxis()->SetRangeUser(0,26.5e3);
+	hData->GetYaxis()->SetRangeUser(0,26.5e3);
 	hData->GetYaxis()->SetNdivisions(505);
-    hData->GetYaxis()->SetMaxDigits(3);
-	hData->Draw("PE");
+	hData->GetYaxis()->SetMaxDigits(3);
+
     TH1D * hFit = (TH1D*) hData->Clone("hFit");
     hFit->Reset();
     int colors[] = {46,38,14,12};
@@ -1173,14 +1335,31 @@ bool fitter::DoProjection() {
 	  ++ic;
 	  hFit->Add(c.pdf);
 	}
-    hFit->SetLineWidth(2);
+	hFit->SetLineWidth(2);
 	hFit->SetLineColor(9);
+
+	hData->Draw("PE");
+	for(int i = 1; i <= hData->GetNbinsX(); i++) {
+	  double error = sqrt(hData->GetBinError(i)*hData->GetBinError(i) + hFit->GetBinError(i)*hFit->GetBinError(i));
+	  hData->SetBinError(i,error);
+	}
+
 	fitComp[1].pdf->Draw("HISTSAME][");
 	fitComp[0].pdf->Draw("HISTSAME][");
 	fitComp[2].pdf->Draw("HISTSAME][");
 	fitComp[3].pdf->Draw("HISTSAME][");
+
+	/*
+	std::vector<TGraphErrors*> gfit;
+	DrawFFErrorBand("proj",gfit);
+	TMultiGraph* gfitproj = new TMultiGraph();
+	gfitproj->Add(gfit[2],"p2][");
+	gfitproj->Add(gfit[1],"p2][");
+	gfitproj->Add(gfit[0],"p2][");
+	gfitproj->Draw("a][");
+	*/
 	hFit->Draw("HISTSAME][");
-    hData->Draw("PESAME");
+	hData->Draw("PESAME");
   
 	TLegend * leg;
 	leg = new TLegend(0.22,0.75,0.45,0.9);
@@ -1196,10 +1375,12 @@ bool fitter::DoProjection() {
 	TH1D * hpull = (TH1D*)hData->Clone("hpull");
 	hpull->Reset();
     DrawResiduals(hData,hFit,hpull);
+    for(int i = 1; i < hpull->GetNbinsX(); i++) {
+      hpull->SetBinContent(i, (hData->GetBinContent(i)-hFit->GetBinContent(i))/hData->GetBinError(i));
+    }
     cperp->SaveAs("fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
     cperp->SaveAs("fit_projection_pperp_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");
-  
-  
+
   TString fmodels[]  ={"HPQCD_Ds","MILC","LCSRDs"};
   const int Nfmodels = sizeof(fmodels)/sizeof(fmodels[0]);
   int fcolor[]={1,2,13};

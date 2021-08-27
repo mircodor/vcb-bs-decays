@@ -97,6 +97,7 @@ decayRates* decRefDs;
 decayRates* decRefDsS;
 
 pdfComp fitComp[4];
+pdfComp fitBand[4];
 
 std::vector<TString> theoryInputs;
 
