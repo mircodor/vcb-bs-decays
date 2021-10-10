@@ -141,7 +141,7 @@ bool fitter::ReadConfigFile(TString filename){
       }
     }
     else if(line=="Theory-Inputs") {
-      fin >> np;
+      fin >> np >> dirInputs;
       for (unsigned int i=0; i<np; ++i) {
 		TString model;
 		fin >> model;
@@ -180,13 +180,29 @@ bool fitter::ReadConfigFile(TString filename){
       }
    }
       
-    //cout << "--------------------------------------- \n";
-    //cout << " Covariance matrix: ";
+    //cout << "--------------------------------------------------- \n";
+    //cout << " Covariance matrix gaussian constrained parameters: ";
     //covMatrixStat.Print();
 
     TMatrixD covMatrixStatInv(nparConst,nparConst);
     if(nparConst>1) {
-        covMatrixStatInv = covMatrixStat.InvertFast();
+	  if(covMatrixStat.Determinant()==0) { cout << "cannot invert Gauss const covariance, det = 0" << endl; return false;}
+        //covMatrixStatInv = covMatrixStat.Invert();
+		covMatrixStatInv = covMatrixStat;
+	  TDecompLU lu(covMatrixStatInv);
+	  lu.SetTol(1.0e-24);
+	  int nr = 0;
+	  while(!lu.Invert(covMatrixStatInv) && nr < 10) {
+		lu.SetMatrix(covMatrixStatInv);
+		lu.SetTol(0.1*lu.GetTol());
+		nr++;
+	  }
+	  cout << "Gauss constr cov matrix inversion sucessfully done\n" << endl;
+	  //covMatrixStatInv.Print();
+	  //cout  << "check the inverse: A*A-1 = 1" << endl;
+	  //TMatrixD identity = covMatrixStat*covMatrixStatInv;
+	  //identity.Print();
+	  
         for(unsigned int i=0; i<nparConst; ++i){
            for(unsigned int j=0; j<nparConst; ++j){
                covParConst[i][j] = covMatrixStatInv(i,j);
@@ -200,7 +216,7 @@ bool fitter::ReadConfigFile(TString filename){
             }
           }
      }
-    
+    //cout << "Matrix inversion done" << endl;
 
      return true;
     
@@ -218,11 +234,12 @@ bool fitter::SetExtInputs(){
   }
   //read external inputs and store them
   for(auto model : theoryInputs) {
+	cout << "Setting ext inputs for " << model << endl;
 	if(model != "LHCb-PAPER-2019-046") {
 	  TString n;
 	  double x, y, err;
 	  int i = 0;
-	  ifstream ftmp(dirInputs+model+"_values.txt");
+	  ifstream ftmp(dirInputs+"/"+model+"_values.txt");
 	  if(!ftmp.is_open()){
 		cout << model << " input file not found!" << endl; return false;
 	  }
@@ -241,7 +258,7 @@ bool fitter::SetExtInputs(){
 	  
 	  //read correlation
 	  double c;
-	  ifstream ftmpc(dirInputs+model+"_corr.txt");
+	  ifstream ftmpc(dirInputs+"/"+model+"_corr.txt");
 	  while(ftmpc >> n >> c) {
 		_extInputs[model].corr[n] = c;
 	  }
@@ -272,7 +289,7 @@ bool fitter::SetExtInputs(){
 	  TString n;
 	  double x, y, xerr, err;
 	  int i = 0;
-	  ifstream ftmp(dirInputs+model+"_values.txt");
+	  ifstream ftmp(dirInputs+"/"+model+"_values.txt");
 	  if(!ftmp.is_open()){
 		cout << model << " input file not found!" << endl; return false;
 	  }
@@ -291,7 +308,7 @@ bool fitter::SetExtInputs(){
 	  
 	  //read covariance
 	  double c;
-	  ifstream ftmpc(dirInputs+model+"_cov.txt");
+	  ifstream ftmpc(dirInputs+"/"+model+"_cov.txt");
 	  while(ftmpc >> n >> c) {
 		_extInputs[model].cov[n] = c;
 	  }
@@ -317,10 +334,29 @@ bool fitter::SetExtInputs(){
 	///inverse covariance matrix
 	TMatrixD cov_inv_matrix(_extInputs[model].dim,_extInputs[model].dim);
 	TMatrixD tobeInverted = _extInputs[model].cov_matrix;
-	cov_inv_matrix = tobeInverted.InvertFast();
+	cout << "Covariance input matrix inversion..." << endl;
+	double det = tobeInverted.Determinant();
+	cout << " matrix determinant = " << det << endl;
+	if(det==0 || det!=det) { cout << "cannot invert covariance for model " << model << endl; return false;}
+	TDecompLU lu(tobeInverted);
+	lu.SetTol(1.0e-24);
+	int nr = 0;
+	while(!lu.Invert(tobeInverted) && nr < 10) {
+	  lu.SetMatrix(tobeInverted);
+	  lu.SetTol(0.1*lu.GetTol());
+	  nr++;
+	}
+	cout << " matrix inversion done" << endl;
+	//tobeInverted.Print();
+	//cout  << "check the inverse: A*A-1 = 1" << endl;
+	//TMatrixD identity = _extInputs[model].cov_matrix*tobeInverted;
+	//identity.Print();
+	
 	for(int i = 0; i < _extInputs[model].dim; i++)
 	  for(int j = 0; j < _extInputs[model].dim; j++)
-		_extInputs[model].cov_inv_matrix[i][j] = cov_inv_matrix(i,j);
+		_extInputs[model].cov_inv_matrix[i][j] = tobeInverted(i,j);
+	
+	cout << "-------------------------------------\n" << endl;
 	
   }
   
@@ -625,6 +661,7 @@ void fcn_tot(int &, double *, double &f, double *p, int ) {
 	_ndf+=inputs.dim;
   }
  
+  //cout << " chi2 = " << _chi2 << endl;
   f = _chi2;
   
 }
@@ -845,8 +882,11 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
     //start the toys
     int wPoints = 400;
     for(int k = 0; k < wPoints; k++) { //w points
-      w = 1.0000001 + 1.33/wPoints*k;
-
+	  if(k!=0)
+		w = 1.0000001 + 1.33/wPoints*k;
+	  else
+		w = 1.5465;
+		
       TH1D * hg = new TH1D("hg","hg",10000,0,5);
       
       for(int i = 0; i < 1000; i++) { //nExtractions per point
@@ -972,7 +1012,10 @@ void fitter::DrawFFErrorBand(TString xname, std::vector<TGraphErrors*>& gr) {
       //start the toys
       int wPoints = 400;
       for(int k = 0; k < wPoints; k++) { //w points
-	w = 1.0000001 + 1.2/wPoints*k;
+		if(k!=0)
+		  w = 1.0000001 + 1.2/wPoints*k;
+		else
+		  w = 1.4672;
 	
 	TH1D * hg = new TH1D("hg","hg",10000,0,5);
 	
@@ -1385,10 +1428,12 @@ bool fitter::DoProjection() {
   const int Nfmodels = sizeof(fmodels)/sizeof(fmodels[0]);
   int fcolor[]={1,2,13};
   int marker[]={21,22,23};
-  TGraphErrors* grfplus[2][Nfmodels];
-  TGraphErrors* grfpluspull[2][Nfmodels];
+  const int nFFDs = FFModelFitDs.model=="CLN"? 1 : 2;
+
+  TGraphErrors* grfplus[nFFDs][Nfmodels];
+  TGraphErrors* grfpluspull[nFFDs][Nfmodels];
   for(int im=0; im<Nfmodels; ++im){
-	for(int i=0;i<2;++i) {
+	for(int i=0;i<nFFDs;++i) {
 	  grfplus[i][im] = new TGraphErrors();
 	  grfplus[i][im]->SetMarkerColor(fcolor[im]);
 	  grfplus[i][im]->SetLineColor(fcolor[im]);
@@ -1404,7 +1449,7 @@ bool fitter::DoProjection() {
 	TString n;
 	double x, y, err;
 	int ip = 0; int ip0 = 0;
-	ifstream ftmp(dirInputs+fmodels[im]+"_values.txt");
+	ifstream ftmp(dirInputs+"/"+fmodels[im]+"_values.txt");
 	if(!ftmp.is_open()){
 	  cout << fmodels[im] << " input file not found!" << endl; return false;
 	}
@@ -1415,7 +1460,7 @@ bool fitter::DoProjection() {
 		grfpluspull[0][im]->SetPoint(ip,x,(y-FFfunctions("fplus",x,0))/err);
 		grfpluspull[0][im]->SetPointError(ip,0,0);
 		ip++;
-	  }else if(n.Contains("fzero")){
+	  }else if(n.Contains("fzero") && nFFDs>1){
 		grfplus[1][im]->SetPoint(ip0,x,y);
 		grfplus[1][im]->SetPointError(ip0,0,err);
 		grfpluspull[1][im]->SetPoint(ip0,x,(y-FFfunctions("fzero",x,0))/err);
@@ -1425,18 +1470,18 @@ bool fitter::DoProjection() {
 	}
   }
   
-  TGraph* grfplusFit[2];
-  TCanvas* cf[2];
-  TPad*    upperPadcf[2];
-  TPad*    lowerPadcf[2];
-  TMultiGraph* gf[2];
-  TLegend * legf[2];
-  TLine * l1gf[2]; TLine * l2gf[2]; TLine * l3gf[2];
+  TGraph* grfplusFit[nFFDs];
+  TCanvas* cf[nFFDs];
+  TPad*    upperPadcf[nFFDs];
+  TPad*    lowerPadcf[nFFDs];
+  TMultiGraph* gf[nFFDs];
+  TLegend * legf[nFFDs];
+  TLine * l1gf[nFFDs]; TLine * l2gf[nFFDs]; TLine * l3gf[nFFDs];
   TString titleyf[]={"#it{f}_{+}(#it{w})","#it{f}_{0}(#it{w})"};
   TString namef[]={"fplus","fzero"};
   TString fmodelsName[]  ={"HPQCD, PRD101 (2020) 7, 074513","MILC, PRD85 (2012) 114502","LCSR, EPJC80 (2020) 4, 347"};
-  TMultiGraph* gfpull[2];
-  for(int i=0;i<2;++i){
+  TMultiGraph* gfpull[nFFDs];
+  for(int i=0;i<nFFDs;++i){
 	grfplusFit[i] = new TGraph();
 	grfplusFit[i]->SetLineWidth(2);
 	grfplusFit[i]->SetLineColor(9);
@@ -1445,10 +1490,11 @@ bool fitter::DoProjection() {
   for(int p=0;p<1000;++p){
 	double w = 1.0 + 1.33/1000*p;
 	grfplusFit[0]->SetPoint(p,w,FFfunctions("fplus",w,0));
-    grfplusFit[1]->SetPoint(p,w,FFfunctions("fzero",w,0));
+	if(nFFDs>1)
+	  grfplusFit[1]->SetPoint(p,w,FFfunctions("fzero",w,0));
   }
   
-  for(int i=0;i<2;++i){
+  for(int i=0;i<nFFDs;++i){
 	cf[i] = new TCanvas(Form("cf_%i",i),Form("cf_%i",i),800,800);
 	cf[i]->cd();
 	//cf->SetLeftMargin(0.2);
@@ -1466,8 +1512,12 @@ bool fitter::DoProjection() {
 	gf[i] = new TMultiGraph();
 	  
 	std::vector<TGraphErrors*> gfCL;
-	if(i==0) DrawFFErrorBand("fplus",gfCL);
-	else DrawFFErrorBand("fzero",gfCL);
+	if(i==0) {DrawFFErrorBand("fplus",gfCL);
+	  cout << "f+(q2=0) = " << gfCL[0]->GetPointY(0) << " +- " << gfCL[0]->GetErrorY(0) << ", w = " << gfCL[0]->GetPointX(0) << endl;
+	}
+	else { DrawFFErrorBand("fzero",gfCL);
+	  cout << "f0(q2=0) = " << gfCL[0]->GetPointY(0) << " +- " << gfCL[0]->GetErrorY(0) << ", w = " << gfCL[0]->GetPointX(0) << endl;
+	}
 	  
 	gf[i]->Add(gfCL[2],"p");
 	gf[i]->Add(gfCL[1],"p");
@@ -1521,10 +1571,11 @@ bool fitter::DoProjection() {
   const int NVAmodels = sizeof(VAmodels)/sizeof(VAmodels[0]);
   int colorsVA[]={1,13};
   int markersVA[]={21,23};
-  TGraphErrors* grDst[4][NVAmodels];
-  TGraphErrors* grDstpull[4][NVAmodels];
+  const int nFFDsS = FFModelFitDsS.model=="CLN"? 3 : 4;
+  TGraphErrors* grDst[nFFDsS][NVAmodels];
+  TGraphErrors* grDstpull[nFFDsS][NVAmodels];
   for(int im=0; im<NVAmodels; ++im){
-	for(int i=0;i<4;++i) {
+	for(int i=0;i<nFFDsS;++i) {
 	  grDst[i][im] = new TGraphErrors();
 	  grDst[i][im]->SetLineWidth(2);
 	  grDst[i][im]->SetMarkerColor(colorsVA[im]);
@@ -1542,7 +1593,7 @@ bool fitter::DoProjection() {
 	TString n;
 	double x, y, err;
 	int ipv{0},ipa1{0},ipa2{0},ipa0{0};
-	ifstream ftmp(dirInputs+VAmodels[im]+"_values.txt");
+	ifstream ftmp(dirInputs+"/"+VAmodels[im]+"_values.txt");
 	if(!ftmp.is_open()){
 	  cout << VAmodels[im] << " input file not found!" << endl; return false;
 	}
@@ -1563,7 +1614,7 @@ bool fitter::DoProjection() {
 	    grDstpull[2][im]->SetPoint(ipa2,x,(y-FFfunctions("a2",x,0))/err); grDstpull[2][im]->SetPointError(ipa2,0,0); 
 	    ipa2++;
 	  }
-	  else if(n.Contains("a0")){
+	  else if(n.Contains("a0") && nFFDsS>3 ){
 		grDst[3][im]->SetPoint(ipa0,x,y); grDst[3][im]->SetPointError(ipa0,0,err);
 		grDstpull[3][im]->SetPoint(ipa0,x,(y-FFfunctions("a0",x,0))/err); grDstpull[3][im]->SetPointError(ipa0,0,0);
 		ipa0++;
@@ -1571,9 +1622,9 @@ bool fitter::DoProjection() {
 	}
   }
   
-  TGraph* grDstFit[4];
+  TGraph* grDstFit[nFFDsS];
   TString titley[]={"#it{V}(#it{w})","#it{A}_{1}(#it{w})","#it{A}_{2}(#it{w})","#it{A}_{0}(#it{w})"};
-  for(int i=0;i<4;++i){
+  for(int i=0;i<nFFDsS;++i){
 	grDstFit[i] = new TGraph();
 	grDstFit[i]->SetLineWidth(2);
 	grDstFit[i]->SetLineColor(9);
@@ -1583,7 +1634,8 @@ bool fitter::DoProjection() {
 	grDstFit[0]->SetPoint(p,w,FFfunctions("v" ,w,0));
 	grDstFit[1]->SetPoint(p,w,FFfunctions("a1",w,0));
 	grDstFit[2]->SetPoint(p,w,FFfunctions("a2",w,0));
-	grDstFit[3]->SetPoint(p,w,FFfunctions("a0",w,0));
+	if (nFFDsS>3)
+	  grDstFit[3]->SetPoint(p,w,FFfunctions("a0",w,0));
   }
   
   TGraphErrors* grDstHPQCD = new TGraphErrors();
@@ -1606,14 +1658,14 @@ bool fitter::DoProjection() {
   grDstHPQCDpull->SetPoint(0,1,(hpqcdDsS-FFfunctions("a1",1,0))/ehpqcdDsS);
   grDstHPQCDpull->SetPointError(0,0,0);
  
-  TMultiGraph* gVA[4];
-  TMultiGraph* gVApull[4];
-  TCanvas* cVA[4];
-  TPad * upperPadVA[4];
-  TPad * lowerPadVA[4];
-  TLegend * legVA[4];
+  TMultiGraph* gVA[nFFDsS];
+  TMultiGraph* gVApull[nFFDsS];
+  TCanvas* cVA[nFFDsS];
+  TPad * upperPadVA[nFFDsS];
+  TPad * lowerPadVA[nFFDsS];
+  TLegend * legVA[nFFDsS];
   TString funcname[]={"V","A1","A2","A0"};
-  for(int cp=0;cp<4;++cp){
+  for(int cp=0;cp<nFFDsS;++cp){
         std::vector<TGraphErrors*> gVACL;
         cVA[cp] = new TCanvas(Form("c_%i",cp),Form("c_%i",cp),800,800);
 	//cVA[cp]->SetLeftMargin(0.2);
@@ -1630,14 +1682,22 @@ bool fitter::DoProjection() {
 	gVA[cp] = new TMultiGraph();
 	gVApull[cp] = new TMultiGraph();
 	
-	if(funcname[cp] == "V")
-	  DrawFFErrorBand("v",gVACL); 
-	if(funcname[cp] == "A1")
+	if(funcname[cp] == "V"){
+	  DrawFFErrorBand("v",gVACL);
+	  cout << "V(q2=0) = " << gVACL[0]->GetPointY(0) << " +- " << gVACL[0]->GetErrorY(0) << ", w = " << gVACL[0]->GetPointX(0) << endl;
+	}
+	if(funcname[cp] == "A1"){
 	  DrawFFErrorBand("a1",gVACL);
-	if(funcname[cp] == "A2")
+	  cout << "A1(q2=0) = " << gVACL[0]->GetPointY(0) << " +- " << gVACL[0]->GetErrorY(0) << ", w = " << gVACL[0]->GetPointX(0) << endl;
+	}
+	if(funcname[cp] == "A2"){
 	  DrawFFErrorBand("a2",gVACL);
-	if(funcname[cp] == "A0")
+	  cout << "A2(q2=0) = " << gVACL[0]->GetPointY(0) << " +- " << gVACL[0]->GetErrorY(0) << ", w = " << gVACL[0]->GetPointX(0) << endl;
+	}
+	if(funcname[cp] == "A0"){
 	  DrawFFErrorBand("a0",gVACL);
+	  cout << "A0(q2=0) = " << gVACL[0]->GetPointY(0) << " +- " << gVACL[0]->GetErrorY(0) << ", w = " << gVACL[0]->GetPointX(0) << endl;
+	}
 
 	gVA[cp]->Add(gVACL[2],"p");
 	gVA[cp]->Add(gVACL[1],"p");
@@ -1705,7 +1765,7 @@ bool fitter::DoProjection() {
   TString n;
   double x, y, xerr, yerr;
   int ip = 1;
-  ifstream ftmp(dirInputs+"LHCb-PAPER-2019-046_values.txt");
+  ifstream ftmp(dirInputs+"/"+"LHCb-PAPER-2019-046_values.txt");
   if(!ftmp.is_open()){
 	cout << "LHCb w data input file not found!" << endl; return false;
   }
@@ -1770,13 +1830,10 @@ bool fitter::DoProjection() {
 
   gPad->RedrawAxis(); 
   
-  
   lowerPadw->cd();
   TH1D * hpullw = (TH1D*) hw->Clone("hpullw");
   hpullw->Reset();
   DrawResiduals(hw,hwFit,hpullw);
-
-
   
   cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".pdf");
   cw->SaveAs("fit_projection_wLHCb_Ds_"+FFModelFitDs.model+"_DsS_"+FFModelFitDsS.model+".C");

@@ -46,8 +46,8 @@ void decayRates::FFfunctionsCLN(double w, vector<parameter> FFpar, double& Gw, d
   double fplus = (1+r)/2./sqrt(r)*Gw;
   double w1    = w - 1.;
   f0 = fplus* (4.*r/(1.+r)/(1.+r))*(1+w)/2. * 1.0036*
-			  (1. - 0.0068*w1 + 0.0017*w1*w1 - 0.0013*w1*w1*w1);
-
+ 			  (1. - 0.0068*w1 + 0.0017*w1*w1 - 0.0013*w1*w1*w1);
+ 
   return;
 }
 
@@ -55,8 +55,9 @@ void decayRates::FFfunctionsCLN(double w, vector<parameter> FFpar, double& Gw, d
 void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& Gw, double& f0){
     
     //coeff of the series
-    double dp[10] = {0.};
-    double ep[10] = {0.};
+    const int maxorder = 4;
+    double dp[maxorder] = {0.};
+    double ep[maxorder] = {0.};
     double G0=1;
 
     //link now the parameters to the coeff of the series
@@ -79,27 +80,29 @@ void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& Gw, d
     double tplus = (mB+mD)*(mB+mD);
     double tminus = (mB-mD)*(mB-mD);
     double mBv[5]={6.32847,6.91947,7.030,7.280,0}; //new poles
-   // double mBv[4]={6.329,6.920,7.020,7.280}; //old poles
+   // double mBv[5]={6.329,6.920,7.020,7.280,0}; //old poles
     double P_p  = P1pm(z,tplus,tminus,mBv);
-     
+       
      //outer function
      double nI    = 2.6;
      double chiT0 = 5.131e-4;//Gambino paper 1606.08030
      double kp    = 8.*r*r/mB*sqrt(8.*nI/3./TMath::Pi()/chiT0);
      double phi_p = kp*(1.+z)*(1.+z)*sqrt(1.-z)/pow( (1.+r)*(1.-z) + 2*sqrt(r)*(1.+z), 5);
 
-     //series and p_p
+     //make the first coefficient linked to G0
      double phi_p0 = kp/pow(1+r +2*sqrt(r),5);
      double P_p0   = P1pm(0,tplus,tminus,mBv);
-
      double d0 = (1.+r)/2./sqrt(r)*phi_p0*P_p0;
-     //cout << "d0 = " << d0 << endl;
-
+     //build the series
      double Sum_z = d0; int order = 1;
-     for(auto cdp : dp){ Sum_z += cdp*pow(z, order);  ++order;}
-  
+	 //cout << " ============== " << endl;
+     //cout << " d0 = " << d0 << endl;
+     for(auto cdp : dp){
+	   //cout << " d" << order << " = " << cdp << endl;
+	   Sum_z += cdp*pow(z, order);  ++order;
+	 }
      double f_p = Sum_z/phi_p/P_p;
-  
+     //here it is G(w)
      Gw = G0*2*sqrt(r)/(1+r)*f_p;
   
      //now let's do f0:
@@ -109,13 +112,41 @@ void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& Gw, d
      double chiL0 = 6.204e-3;
      double k0    = r*(1.-r*r)*sqrt(8.*nI/TMath::Pi()/chiL0);
      double phi_z = k0*(1.-z*z)*sqrt(1.-z)/pow( (1.+r)*(1.-z) + 2*sqrt(r)*(1.+z), 4);
-     
   
-	 double Sum_f0 = 0; int order0 = 0;
-	 //to apply strong constraints on f0 (at order 2) uncomment below
-	 //ep[2] = -274.67977255604944*ep[0] - 16.57346591863179*ep[1] + 1785.5094965617334*d0 + 107.73301766376306*dp[1] + 6.500331203665146*dp[2];
-	 for(auto edp : ep){ Sum_f0 += edp*pow(z, order0);  ++order0;}
-     
+	 //make the strong contraints on f0: f0(q2=0) = f+(q2=0)
+     double wmax = (mB*mB + mD*mD) / (2.*mB*mD);
+     double zq20 = (sqrt(wmax+1.) - sqrt(2.))/(sqrt(wmax+1.) + sqrt(2.));
+     //build f+ at q2=0
+	 double P_pq20 = P1pm(zq20,tplus,tminus,mBv);
+	 double phi_pq20 = kp*(1.+zq20)*(1.+zq20)*sqrt(1.-zq20)/pow( (1.+r)*(1.-zq20) + 2*sqrt(r)*(1.+zq20), 5);
+	 double Sum_zq20 = d0; order = 1;
+	 for(auto cdp : dp){ Sum_zq20 += cdp*pow(zq20, order);  ++order;}
+     double f_pq20 = Sum_zq20/phi_pq20/P_pq20;
+     //build the "truncated f0 series": that without one coeff
+	 double P_zq20 = P1pm(zq20,tplus,tminus,mBa);
+     double phi_zq20 = k0*(1.-zq20*zq20)*sqrt(1.-zq20)/pow( (1.+r)*(1.-zq20) + 2*sqrt(r)*(1.+zq20), 4);
+	 double Sum_f0q20 = 0;
+     for(int ij=1; ij<maxorder; ij++){ Sum_f0q20 += ep[ij]*pow(zq20, ij);}
+	
+     double e0 = f_pq20*P_zq20*phi_zq20 - Sum_f0q20;
+	 //double e2 = (f_pq20*P_zq20*phi_zq20 - f_0q20)/zq20/zq20;
+    
+	 double Sum_f0 = 0;
+	 //to apply strong constraints on f0, uncomment below
+	 //(note: e0 must be a fixed parameter in the config file)
+     //my realtion:
+	 //ep[0] = e0;
+	 //Sneha relation:
+     //ep[0] = 6.500331203665146*dp[0] + 0.3922131457342012*dp[1] +
+	 //       0.023665125186233833*dp[2] + 0.0014278923492779892*dp[3] -
+	 //		 0.060337409502004426*ep[1] - 0.003640602985412573*ep[2] -
+	 //		 0.00021966455316505822*ep[3];
+
+     for(int ij=0; ij<maxorder; ij++){
+	   //cout << " e" << ij << " = " << ep[ij] << endl;
+	   Sum_f0 += ep[ij]*pow(z, ij);
+	 }
+  
 	 f0 = Sum_f0/phi_z/P_z;
  
 	 return;
@@ -177,10 +208,10 @@ void decayRates::FFfunctionsCLN(double w, vector<parameter> FFpar, double& hw, d
 void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& A1, double& A2, double& V, double& A0){
 
   //these are the coeff of the 3 series
-  double bp[10] = {0.};
-  double cp[10] = {0.};
-  double ap[10] = {0.};
-  double hp[10] = {0.};
+  double bp[5] = {0.};
+  double cp[5] = {0.};
+  double ap[5] = {0.};
+  double hp[5] = {0.};
 
   //link now the parameters to the coeff of the series
   int count_b=0;
@@ -218,8 +249,8 @@ void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& A1, d
 
   double mBv[5]={6.32847,6.91947,7.030,7.280,7.365};//new poles
   double mBa[5]={6.73847,6.750  ,7.145,7.150,0};//new poles
-  //double mBv[4]={6.329,6.920,7.020,7.280};//old poles
-  //double mBa[4]={6.739,6.750,7.145,7.150};//old poles
+  //double mBv[5]={6.329,6.920,7.020,7.280,0};//old poles
+  //double mBa[5]={6.739,6.750,7.145,7.150,0};//old poles
   
   double mBp[5]={6.27447,6.8712,7.250,0,0};
   
@@ -269,9 +300,15 @@ void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& A1, d
   
   double p0m  = P1pm(z,tplus,tminus,mBp);
   double sumF2 = 0; order =0;
-  //to apply strong constraints on F2 (at order 2) uncomment below
-  //hp[2] = 1567.047936060946*b0 + 507.4862940069169*cp[1] + 26.61205383174379*cp[2] - 363.6569135273258*hp[0] - 19.069790599986295*hp[1];
-  for(auto hap : hp){ sumF2 += hap*pow(z, order); ++order;}
+  //to apply strong constraints on F2 uncomment below
+  //(note: h0 must be a fixed parameter)
+  // Sneha relation:
+  //hp[0] = 4.310226659869955*b0 + 1.395860907385888*cp[0] + 0.07319749527752503*cp[1] + 0.0038384005788494402*cp[2] - 0.05243896070891928*hp[1] - 0.002749844600231581*hp[2] - 0.00014419899294717772*hp[3];
+  
+  for(auto hap : hp){
+	//cout << "h" << order << " = " << hap << endl;
+	sumF2 += hap*pow(z, order); ++order;
+  }
   double F2BGL = sumF2/p0m/phi_F2;
 
   double q2  = mB*mB + mD*mD - 2.*mB*mD*w;
@@ -282,11 +319,6 @@ void decayRates::FFfunctionsBGL(double w, vector<parameter> FFpar, double& A1, d
   A1 = fBGL/(mB+mD);
   A2 = (mB+mD)/lambda*( (mB*mB-mD*mD-q2)*fBGL - 2.0*mD*F1BGL );
   A0 = F2BGL/2.;
-  
-  if(A1!=A1){ printf("w = %f, q2 = %f, lambda = %f , A1 = %f \n",w,q2,lambda,A1); }
-  if(A2!=A2){ printf("w = %f, q2 = %f, lambda = %f , A2 = %f \n",w,q2,lambda,A2); }
-  if(V !=V ){ printf("w = %f, q2 = %f, lambda = %f , V  = %f \n",w,q2,lambda,V ); }
-  if(A0!=A0){ printf("w = %f, q2 = %f, lambda = %f , A2 = %f \n",w,q2,lambda,A0); }
  
   return;
 }

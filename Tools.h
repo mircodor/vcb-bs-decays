@@ -45,7 +45,7 @@ namespace Constants
 namespace Mass
 {
   const double E   = 0.510998910;
-  const double Mu  = 105.658367;
+  const double Mu  = 105.6583745;
   const double Tau = 1776.84;
   const double K   = 493.677;
   const double Pi  = 139.57018;
@@ -53,13 +53,13 @@ namespace Mass
   const double D0  = 1864.84;
   const double DS  = 2010.27;
   const double D   = 1869.62;
-  const double Ds  = 1968.49;
-  const double DsS = 2112.1;
+  const double Ds  = 1968.35;
+  const double DsS = 2112.2;
   const double P   = 938.272013;
   const double Phi = 1019.455;
   const double B   = 5279.17;
   const double Bd  = 5279.5;
-  const double Bs  = 5366.3;
+  const double Bs  = 5366.88;
   const double K0  = 4976.14;
   const double Lm  = 1115.683;
 }

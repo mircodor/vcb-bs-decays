@@ -15,8 +15,8 @@
 #include "TMatrixD.h"
 #include "TGraphErrors.h"
 #include "TVectorD.h"
-#include "TMatrixD.h"
 #include "TDecompChol.h"
+#include "TDecompLU.h"
 
 class MCcand{
  public:
@@ -109,7 +109,7 @@ TH1D* hacc[2];
 std::map<TString,extInputs> _extInputs;
 
 const bool _rate1D = false;
-const TString dirInputs = "./new_inputs_modified/";
+TString dirInputs = "new_inputs_modified";
 
 void   SetAllPars(double* );
 void   SetAllPars();
