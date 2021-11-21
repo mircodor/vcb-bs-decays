@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+title: >-
+  $|V_{cb}|$ fitter for $B_s^0\to D_s^{(*)-}\mu^+\nu_{\mu}$ decays
+message: >-
+  If you use this software, please cite it using the metadata from this file.
+type: software
+authors:
+  - given-names: Angelo
+    family-names: Di Canto
+    orcid: 'https://orcid.org/0000-0003-1233-3876'
+  - given-names: Mirco
+    family-names: Dorigo
+    orcid: 'https://orcid.org/0000-0002-0681-6946'
+  - given-names: Fabio
+    family-names: Ferrari
+    orcid: 'https://orcid.org/0000-0002-3721-4585'
